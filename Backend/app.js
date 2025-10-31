@@ -1,25 +1,37 @@
-const express=require('express');
-const app=express();
-const dotenv=require('dotenv');
-dotenv.config();
-const connectToDb=require('./db/db')
-const donorRoutes=require('./routes/donor.routes')
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const donorRoutes = require('./routes/donor.routes');
+const receiverRoutes = require('./routes/receiver.routes');
 
-//database connection
-connectToDb();
+
+const app = express();
+
+// Connect to Database
+
 
 // Middleware
 app.use(cors());
-app.use(express.json()); // parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // parse URL-encoded bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Routes
+app.use('/api/donor', donorRoutes);
+app.use('/api/receiver', receiverRoutes);
 
-app.get('/',(req,res)=>{
-    res.send('hello sunil');
-})
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'JeevanDan API is running' });
+});
 
-app.use('/donor',donorRoutes);
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
 
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
 
-module.exports=app;
+module.exports = app;
