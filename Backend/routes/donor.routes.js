@@ -1,98 +1,51 @@
 const express = require("express");
 const router = express.Router();
-const Donor = require("../models/donor.models");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
+const { authMiddleware, isDonor } = require("../middleware/auth.middleware");
 const {
-  donorLoginValidation,
   donorSignupValidation,
+  donorLoginValidation,
   validateRequest,
 } = require("../services/auth.services");
+const {
+  registerDonor,
+  loginDonor,
+  getDonorProfile,
+  updateDonorProfile,
+  updateAvailability,
+  updateLocation,
+  getDonorRequests,
+  acceptRequest,
+  rejectRequest,
+  getDonationHistory,
+} = require("../controllers/donor.controller");
 
-// Signup page (optional frontend rendering)
-router.get("/signup", (req, res) => {
-  res.send("signup page");
-});
+// Public routes
+router.post(
+  "/register",
+  donorSignupValidation,
+  validateRequest,
+  registerDonor
+);
+router.post("/login", donorLoginValidation, validateRequest, loginDonor);
 
-// ✅ Signup Route
-router.post("/signup", donorSignupValidation, validateRequest, async (req, res) => {
-  try {
-    const {
-      fullName,
-      email,
-      contactNumber,
-      bloodGroup,
-      age,
-      gender,
-      password,
-      lastDonationDate,
-      healthInfo, // { weight, chronicDiseases, onMedication }
-      coordinates, // expecting [lng, lat] from frontend
-    } = req.body;
-
-    // Check if donor already exists
-    const existing = await Donor.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ message: "Donor already registered" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const donor = new Donor({
-      fullName,
-      email,
-      contactNumber,
-      bloodGroup,
-      age,
-      gender,
-      password: hashedPassword,
-      lastDonationDate: lastDonationDate || null,
-      healthInfo,
-      location: {
-        type: "Point",
-        coordinates: coordinates, // must be [lng, lat]
-      },
-    });
-
-    await donor.save();
-    res.status(201).json({ message: "Donor registered successfully", donor });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Login page (optional frontend rendering)
-router.get("/login", (req, res) => {
-  res.send("login page");
-});
-
-// ✅ Login Route
-router.post("/login", donorLoginValidation, validateRequest, async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const donor = await Donor.findOne({ email });
-    if (!donor) {
-      return res.status(404).json({ message: "Donor not found" });
-    }
-
-    const isMatch = await bcrypt.compare(password, donor.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    const token = jwt.sign(
-      { id: donor._id, email: donor.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
-
-    res.json({ message: "Login successful", token, donor });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+// Protected routes
+router.get("/profile", authMiddleware, isDonor, getDonorProfile);
+router.put("/profile", authMiddleware, isDonor, updateDonorProfile);
+router.put("/availability", authMiddleware, isDonor, updateAvailability);
+router.put("/location", authMiddleware, isDonor, updateLocation);
+router.get("/requests", authMiddleware, isDonor, getDonorRequests);
+router.post(
+  "/accept-request/:requestId",
+  authMiddleware,
+  isDonor,
+  acceptRequest
+);
+router.post(
+  "/reject-request/:requestId",
+  authMiddleware,
+  isDonor,
+  rejectRequest
+);
+router.get("/donation-history", authMiddleware, isDonor, getDonationHistory);
 
 module.exports = router;
