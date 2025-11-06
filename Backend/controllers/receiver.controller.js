@@ -2,6 +2,7 @@ const Receiver = require('../models/receiver.models');
 const Request = require('../models/request.model');
 const Donor = require('../models/donor.models');
 const { hashPassword, comparePassword, generateToken } = require('../services/auth.services');
+const { autoMatchDonors } = require('../services/matching.service');
 
 // Register Receiver
 const registerReceiver = async (req, res) => {
@@ -104,7 +105,7 @@ const updateReceiverProfile = async (req, res) => {
   }
 };
 
-// Create Blood Request
+// Updated createRequest function
 const createRequest = async (req, res) => {
   try {
     const {
@@ -115,15 +116,15 @@ const createRequest = async (req, res) => {
       medicalDetails
     } = req.body;
 
-    // Validate coordinates
-    if (!location.coordinates || location.coordinates.length !== 2) {
-      return res.status(400).json({ error: 'Invalid location coordinates' });
+    // Validate coordinates [longitude, latitude]
+    if (!location?.coordinates || location.coordinates.length !== 2) {
+      return res.status(400).json({ error: 'Invalid location coordinates. Format: [longitude, latitude]' });
     }
 
     const request = new Request({
       receiver: req.user.id,
       bloodGroup,
-      urgency,
+      urgency: urgency || 'normal',
       unitsRequired: unitsRequired || 1,
       location: {
         type: 'Point',
@@ -136,12 +137,26 @@ const createRequest = async (req, res) => {
 
     await request.save();
 
-    // Find compatible donors (we'll implement matching logic separately)
-    // For now, just return the created request
-    res.status(201).json({
-      message: 'Request created successfully',
-      request
-    });
+    // 🆕 AUTO-MATCH DONORS
+    try {
+      const matchResult = await autoMatchDonors(request._id);
+      
+      return res.status(201).json({
+        message: 'Request created successfully',
+        request: matchResult.request,
+        matchCount: matchResult.matchCount,
+        matches: matchResult.matches
+      });
+    } catch (matchError) {
+      // Even if matching fails, request is created
+      console.error('Matching error:', matchError);
+      return res.status(201).json({
+        message: 'Request created successfully, but matching failed',
+        request,
+        matchError: matchError.message
+      });
+    }
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

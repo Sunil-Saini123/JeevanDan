@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const donorRoutes = require('./routes/donor.routes');
 const receiverRoutes = require('./routes/receiver.routes');
+const matchingRoutes = require('./routes/matching.routes'); // 🆕 ADD THIS
 
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/donor', donorRoutes);
 app.use('/api/receiver', receiverRoutes);
+app.use('/api/match', matchingRoutes); // 🆕 ADD THIS
 
 // Health check
 app.get('/health', (req, res) => {
