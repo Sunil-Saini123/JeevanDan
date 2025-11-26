@@ -93,10 +93,16 @@ function ReceiverDashboard() {
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h3>
           <div className="grid md:grid-cols-2 gap-4">
-            <button className="bg-red-600 text-white py-4 px-6 rounded-lg hover:bg-red-700 transition text-lg font-semibold">
+            <button
+              onClick={() => navigate('/receiver/create-request')}
+              className="bg-red-600 text-white py-4 px-6 rounded-lg hover:bg-red-700 transition text-lg font-semibold"
+            >
               🆘 Create Blood Request
             </button>
-            <button className="bg-blue-600 text-white py-4 px-6 rounded-lg hover:bg-blue-700 transition text-lg font-semibold">
+            <button
+              onClick={() => navigate('/receiver/my-requests')}
+              className="bg-blue-600 text-white py-4 px-6 rounded-lg hover:bg-blue-700 transition text-lg font-semibold"
+            >
               📋 My Requests
             </button>
           </div>

@@ -12,6 +12,15 @@ function DonorDashboard() {
     isAvailable: false
   });
   const [loading, setLoading] = useState(true);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [profileData, setProfileData] = useState({
+    fullName: '',
+    contactNumber: '',
+    age: '',
+    weight: '',
+    address: ''
+  });
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -24,6 +33,15 @@ function DonorDashboard() {
         totalDonations: response.data.donor?.totalDonations || 0,
         pendingRequests: 0,
         isAvailable: response.data.donor?.isAvailable || false
+      });
+      
+      // Set profile data for editing
+      setProfileData({
+        fullName: response.data.donor?.fullName || '',
+        contactNumber: response.data.donor?.contactNumber || '',
+        age: response.data.donor?.age || '',
+        weight: response.data.donor?.weight || '',
+        address: response.data.donor?.address || ''
       });
     } catch (error) {
       console.error('Failed to load dashboard:', error);
@@ -43,6 +61,31 @@ function DonorDashboard() {
       });
     } catch (error) {
       console.error('Failed to update availability:', error);
+      alert('Failed to update availability');
+    }
+  };
+
+  const handleProfileChange = (e) => {
+    setProfileData({
+      ...profileData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault();
+    setUpdating(true);
+
+    try {
+      await api.put('/donor/profile', profileData);
+      alert('✅ Profile updated successfully!');
+      setShowProfileEdit(false);
+      loadDashboardData(); // Reload data
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      alert('❌ Failed to update profile');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -54,7 +97,13 @@ function DonorDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-600 to-purple-900">
-        <div className="text-white text-xl">Loading...</div>
+        <div className="text-white text-center">
+          <svg className="animate-spin h-12 w-12 mx-auto mb-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="text-xl">Loading Dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -81,13 +130,126 @@ function DonorDashboard() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Welcome Section */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            Welcome, {user?.fullName}! 👋
-          </h2>
-          <p className="text-gray-600">
-            Blood Group: <span className="font-bold text-purple-600">{user?.bloodGroup}</span>
-          </p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                Welcome, {user?.fullName}! 👋
+              </h2>
+              <p className="text-gray-600">
+                Blood Group: <span className="font-bold text-purple-600">{user?.bloodGroup}</span>
+              </p>
+              <p className="text-gray-600">
+                Contact: {user?.contactNumber}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowProfileEdit(!showProfileEdit)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              {showProfileEdit ? '✕ Cancel' : '✏️ Edit Profile'}
+            </button>
+          </div>
         </div>
+
+        {/* Profile Edit Form */}
+        {showProfileEdit && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Update Profile</h3>
+            <form onSubmit={handleProfileUpdate}>
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    name="fullName"
+                    value={profileData.fullName}
+                    onChange={handleProfileChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">
+                    Contact Number
+                  </label>
+                  <input
+                    type="tel"
+                    name="contactNumber"
+                    value={profileData.contactNumber}
+                    onChange={handleProfileChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">
+                    Age
+                  </label>
+                  <input
+                    type="number"
+                    name="age"
+                    value={profileData.age}
+                    onChange={handleProfileChange}
+                    min="18"
+                    max="65"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">
+                    Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    name="weight"
+                    value={profileData.weight}
+                    onChange={handleProfileChange}
+                    min="50"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-gray-700 font-semibold mb-2">
+                  Address
+                </label>
+                <textarea
+                  name="address"
+                  value={profileData.address}
+                  onChange={handleProfileChange}
+                  rows={3}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
+                >
+                  {updating ? 'Updating...' : '✓ Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileEdit(false)}
+                  className="bg-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-400 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-6">
@@ -162,21 +324,49 @@ function DonorDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h3>
           <div className="grid md:grid-cols-2 gap-4">
-            <button className="bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 transition">
+            <button 
+              onClick={() => navigate('/donor/requests')}
+              className="bg-purple-600 text-white py-4 px-6 rounded-lg hover:bg-purple-700 transition font-semibold text-lg"
+            >
               📋 View Blood Requests
             </button>
-            <button className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition">
+            <button 
+              onClick={() => navigate('/donor/history')}
+              className="bg-green-600 text-white py-4 px-6 rounded-lg hover:bg-green-700 transition font-semibold text-lg"
+            >
               📊 Donation History
             </button>
-            <button className="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition">
-              👤 Update Profile
-            </button>
-            <button className="bg-yellow-600 text-white py-3 px-6 rounded-lg hover:bg-yellow-700 transition">
-              📍 Update Location
-            </button>
+          </div>
+        </div>
+
+        {/* Info Card */}
+        <div className="bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-lg p-6">
+          <h3 className="text-xl font-bold text-purple-800 mb-3">📌 How it Works</h3>
+          <ol className="space-y-2 text-purple-900">
+            <li className="flex items-start gap-2">
+              <span className="font-bold">1.</span>
+              <span>Toggle your availability status when you're ready to donate</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="font-bold">2.</span>
+              <span>Receive notifications for matching blood requests</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="font-bold">3.</span>
+              <span>Accept requests that fit your schedule</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="font-bold">4.</span>
+              <span>Save lives and track your donation history</span>
+            </li>
+          </ol>
+          <div className="mt-4 pt-4 border-t border-purple-300">
+            <p className="text-sm text-purple-800">
+              <span className="font-semibold">💡 Note:</span> Location tracking will be automatic once you enable availability. Socket.io will handle real-time updates.
+            </p>
           </div>
         </div>
       </main>
