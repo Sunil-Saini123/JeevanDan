@@ -13,15 +13,23 @@ const requestSchema = new mongoose.Schema({
   },
   urgency: {
     type: String,
-    enum: ['critical', 'urgent', 'normal'],
-    default: 'normal'
+    enum: ['Critical', 'Urgent', 'Moderate'],
+    default: 'Moderate'
   },
   unitsRequired: {
     type: Number,
-    required: true,
-    min: 1,
-    max: 5,
-    default: 1
+    default: 1,
+    min: 1
+  },
+  requiredBy: {
+    type: Date,
+    default: function() {
+      // Default to 24 hours from creation for Moderate
+      // 6 hours for Urgent, 2 hours for Critical
+      const hours = this.urgency === 'Critical' ? 2 : 
+                    this.urgency === 'Urgent' ? 6 : 24;
+      return new Date(Date.now() + hours * 60 * 60 * 1000);
+    }
   },
   unitsMatched: {
     type: Number,

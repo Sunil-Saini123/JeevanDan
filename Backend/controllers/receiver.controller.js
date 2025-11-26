@@ -78,7 +78,8 @@ const getReceiverProfile = async (req, res) => {
     if (!receiver) {
       return res.status(404).json({ error: 'Receiver not found' });
     }
-    res.json(receiver);
+    // ✅ FIX: Wrap in object
+    res.json({ receiver });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -110,72 +111,145 @@ const createRequest = async (req, res) => {
   try {
     const {
       bloodGroup,
-      urgency,
-      unitsRequired,
+      urgencyLevel,
+      unitsNeeded,
       location,
-      medicalDetails
+      address,
+      patientDetails,
+      notes
     } = req.body;
 
-    // Validate coordinates [longitude, latitude]
-    if (!location?.coordinates || location.coordinates.length !== 2) {
-      return res.status(400).json({ error: 'Invalid location coordinates. Format: [longitude, latitude]' });
+    // Validate
+    if (!bloodGroup || !location?.coordinates || !address?.hospital) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: bloodGroup, location, and hospital' 
+      });
     }
 
+    if (location.coordinates.length !== 2) {
+      return res.status(400).json({ 
+        error: 'Invalid coordinates. Expected [longitude, latitude]' 
+      });
+    }
+
+    // ✅ Create request matching ACTUAL schema
     const request = new Request({
       receiver: req.user.id,
       bloodGroup,
-      urgency: urgency || 'normal',
-      unitsRequired: unitsRequired || 1,
+      urgency: urgencyLevel || 'Moderate', // ✅ Schema uses 'urgency'
+      unitsRequired: unitsNeeded || 1, // ✅ Schema uses 'unitsRequired'
+      requiredBy: req.body.requiredBy ? new Date(req.body.requiredBy) : undefined, // ✅ Let default handle it
       location: {
         type: 'Point',
         coordinates: location.coordinates,
-        address: location.address,
-        hospital: location.hospital
+        address: { // ✅ Schema has address object
+          hospital: address.hospital,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode
+        }
       },
-      medicalDetails
+      patientDetails: { // ✅ Schema uses 'patientDetails' NOT 'medicalDetails'
+        name: patientDetails?.name,
+        age: patientDetails?.age,
+        gender: patientDetails?.gender,
+        medicalCondition: patientDetails?.medicalCondition || notes
+      }
     });
 
     await request.save();
 
-    // 🆕 AUTO-MATCH DONORS
+    // Auto-match donors
     try {
+      const { autoMatchDonors } = require('../services/matching.service');
       const matchResult = await autoMatchDonors(request._id);
       
       return res.status(201).json({
-        message: 'Request created successfully',
-        request: matchResult.request,
-        matchCount: matchResult.matchCount,
-        matches: matchResult.matches
+        message: 'Request created and matched successfully',
+        request: {
+          id: matchResult.request._id,
+          bloodGroup: matchResult.request.bloodGroup,
+          urgencyLevel: matchResult.request.urgency,
+          unitsNeeded: matchResult.request.unitsRequired,
+          status: matchResult.request.status,
+          matchedDonorsCount: matchResult.matchCount,
+          createdAt: matchResult.request.createdAt
+        },
+        matchCount: matchResult.matchCount
       });
     } catch (matchError) {
-      // Even if matching fails, request is created
       console.error('Matching error:', matchError);
       return res.status(201).json({
-        message: 'Request created successfully, but matching failed',
-        request,
+        message: 'Request created, but matching failed',
+        request: {
+          id: request._id,
+          bloodGroup: request.bloodGroup,
+          urgencyLevel: request.urgency,
+          unitsNeeded: request.unitsRequired,
+          status: request.status,
+          matchedDonorsCount: 0,
+          createdAt: request.createdAt
+        },
         matchError: matchError.message
       });
     }
 
   } catch (error) {
+    console.error('Create request error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Get All Requests by Receiver
+// Replace getMyRequests (Line ~140-151):
 const getMyRequests = async (req, res) => {
   try {
     const requests = await Request.find({ receiver: req.user.id })
-      .populate('matchedDonors.donor', 'name email phone bloodGroup')
+      .populate('matchedDonors.donor', 'fullName email contactNumber bloodGroup')
       .sort({ createdAt: -1 });
 
-    res.json(requests);
+    // ✅ Transform based on ACTUAL schema
+    const transformedRequests = requests.map(request => {
+      const acceptedDonors = request.matchedDonors?.filter(m => m.response === 'accepted') || [];
+      
+      return {
+        id: request._id,
+        bloodGroup: request.bloodGroup,
+        urgencyLevel: request.urgency, // ✅ Map urgency to urgencyLevel
+        unitsNeeded: request.unitsRequired, // ✅ Map unitsRequired to unitsNeeded
+        requiredBy: request.createdAt, // ❌ No requiredBy in schema
+        createdAt: request.createdAt,
+        status: request.status,
+        
+        // Counts
+        matchedDonorsCount: request.matchedDonors?.length || 0,
+        acceptedDonors: acceptedDonors,
+        acceptedCount: acceptedDonors.length,
+        
+        // ✅ patientDetails from schema
+        patientDetails: request.patientDetails ? {
+          name: request.patientDetails.name,
+          age: request.patientDetails.age,
+          gender: request.patientDetails.gender,
+          medicalCondition: request.patientDetails.medicalCondition
+        } : null,
+        
+        // ✅ location.address is an object
+        address: request.location ? {
+          hospital: request.location.address?.hospital,
+          city: request.location.address?.city,
+          state: request.location.address?.state,
+          pincode: request.location.address?.pincode
+        } : null
+      };
+    });
+
+    res.json({ requests: transformedRequests });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Get Matched Donors for a Request
+// Replace getMatchedDonors (Line ~153-166):
 const getMatchedDonors = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -183,13 +257,48 @@ const getMatchedDonors = async (req, res) => {
     const request = await Request.findOne({
       _id: requestId,
       receiver: req.user.id
-    }).populate('matchedDonors.donor', 'name email phone bloodGroup location');
+    }).populate('matchedDonors.donor', 'fullName email contactNumber bloodGroup location isAvailable totalDonations');
 
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
 
-    res.json(request.matchedDonors);
+    // ✅ Transform matched donors
+    const matchedDonors = request.matchedDonors.map(match => {
+      const donor = match.donor;
+      
+      return {
+        id: match._id,
+        response: match.response,
+        matchScore: match.matchScore || 0,
+        distance: match.distance || 0,
+        respondedAt: match.respondedAt,
+        donor: {
+          id: donor._id,
+          fullName: donor.fullName,
+          email: donor.email,
+          contactNumber: donor.contactNumber,
+          bloodGroup: donor.bloodGroup,
+          isAvailable: donor.isAvailable,
+          totalDonations: donor.totalDonations || 0,
+          // ✅ Donor location.address is a STRING
+          location: donor.location ? {
+            address: donor.location.address, // String, not object
+            coordinates: donor.location.coordinates
+          } : null
+        }
+      };
+    });
+
+    res.json({
+      requestId: request._id,
+      bloodGroup: request.bloodGroup,
+      status: request.status,
+      urgencyLevel: request.urgency,
+      unitsNeeded: request.unitsRequired,
+      createdAt: request.createdAt,
+      matchedDonors
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
