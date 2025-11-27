@@ -18,14 +18,14 @@ const requestSchema = new mongoose.Schema({
   },
   unitsRequired: {
     type: Number,
+    required: true,
     default: 1,
-    min: 1
+    min: 1,
+    max: 50  // ✅ Increased for realistic scenarios
   },
   requiredBy: {
     type: Date,
     default: function() {
-      // Default to 24 hours from creation for Moderate
-      // 6 hours for Urgent, 2 hours for Critical
       const hours = this.urgency === 'Critical' ? 2 : 
                     this.urgency === 'Urgent' ? 6 : 24;
       return new Date(Date.now() + hours * 60 * 60 * 1000);
@@ -36,6 +36,8 @@ const requestSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  
+  // ✅ FIXED: location.address should be an OBJECT
   location: {
     type: {
       type: String,
@@ -44,27 +46,50 @@ const requestSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      required: true
+      required: true,
+      index: '2dsphere'
     },
-    address: String,
-    hospital: String
+    address: {  // ✅ Changed from String to Object
+      hospital: { type: String, required: true },
+      city: String,
+      state: String,
+      pincode: String
+    }
   },
+  
   status: {
     type: String,
-    enum: ['pending', 'partially_matched', 'fully_matched', 'completed', 'cancelled'],
+    enum: ['pending', 'partially_matched', 'fully_matched', 'completed', 'cancelled', 'expired'],
     default: 'pending'
   },
-  medicalDetails: {
-    condition: String,
-    notes: String,
-    requiredBy: Date
+  
+  // ✅ FIXED: Changed from medicalDetails to patientDetails
+  patientDetails: {
+    name: { type: String, required: true },
+    age: { type: Number, required: true, min: 1, max: 120 },
+    gender: {
+      type: String,
+      enum: ['Male', 'Female', 'Other'],
+      required: true
+    },
+    medicalCondition: String,
+    additionalNotes: String
   },
+  
   matchedDonors: [{
     donor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Donor'
     },
-    matchScore: Number,
+    matchScore: {
+      type: Number,
+      min: 0,
+      max: 100
+    },
+    distance: {  // ✅ Added distance field
+      type: Number,
+      min: 0
+    },
     notifiedAt: Date,
     response: {
       type: String,
@@ -77,21 +102,29 @@ const requestSchema = new mongoose.Schema({
       enum: ['scheduled', 'completed', 'cancelled'],
       default: 'scheduled'
     }
-  }]
+  }],
+  
+  // ✅ Add expiration for auto-cleanup
+  expiresAt: {
+    type: Date,
+    index: { expires: 0 }
+  }
+  
 }, {
   timestamps: true
 });
 
 // Index for geospatial queries
-requestSchema.index({ location: '2dsphere' });
+requestSchema.index({ 'location.coordinates': '2dsphere' });
 
-// Virtual to check if request is fulfilled
-requestSchema.virtual('isFulfilled').get(function() {
-  return this.unitsMatched >= this.unitsRequired;
-});
-
-// Update status based on units matched
+// ✅ Set expiration time based on requiredBy
 requestSchema.pre('save', function(next) {
+  // Auto-expire 24 hours after requiredBy date
+  if (this.requiredBy) {
+    this.expiresAt = new Date(this.requiredBy.getTime() + 24 * 60 * 60 * 1000);
+  }
+  
+  // Update status based on units matched
   if (this.unitsMatched === 0) {
     this.status = 'pending';
   } else if (this.unitsMatched < this.unitsRequired) {
@@ -99,7 +132,13 @@ requestSchema.pre('save', function(next) {
   } else if (this.unitsMatched >= this.unitsRequired) {
     this.status = 'fully_matched';
   }
+  
   next();
+});
+
+// Virtual to check if request is fulfilled
+requestSchema.virtual('isFulfilled').get(function() {
+  return this.unitsMatched >= this.unitsRequired;
 });
 
 module.exports = mongoose.model('Request', requestSchema);

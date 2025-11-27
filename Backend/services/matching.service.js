@@ -29,8 +29,8 @@ const calculateDistance = (coord1, coord2) => {
   return R * c; // Distance in km
 };
 
-// Calculate match score
-const calculateMatchScore = (donor, request) => {
+// Calculate match score (now accepts distance as parameter)
+const calculateMatchScore = (donor, request, distance) => {
   let score = 0;
 
   // 1. Blood Compatibility (40%)
@@ -46,11 +46,6 @@ const calculateMatchScore = (donor, request) => {
   }
 
   // 2. Distance Score (30%)
-  const distance = calculateDistance(
-    donor.location.coordinates,
-    request.location.coordinates
-  );
-  
   if (distance <= 5) score += 30;
   else if (distance <= 10) score += 25;
   else if (distance <= 20) score += 20;
@@ -70,7 +65,6 @@ const calculateMatchScore = (donor, request) => {
   }
 
   // 5. Reliability Score (5%)
-  // Based on donation history
   if (donor.totalDonations >= 5) score += 5;
   else if (donor.totalDonations >= 3) score += 3;
   else if (donor.totalDonations >= 1) score += 2;
@@ -86,11 +80,11 @@ const calculateMatchScore = (donor, request) => {
   }
 
   // 7. Urgency Bonus
-  if (request.urgency === 'critical') {
+  if (request.urgency === 'Critical') {
     score += 5;
   }
 
-  return Math.min(score, 100); // Cap at 100
+  return Math.min(score, 100);
 };
 
 // Find matching donors
@@ -101,51 +95,86 @@ const findMatchingDonors = async (requestId) => {
       throw new Error('Request not found');
     }
 
+    // Validate request location
+    if (!request.location?.coordinates || request.location.coordinates.length !== 2) {
+      throw new Error('Invalid request location');
+    }
+
     // Find compatible donors
     const compatibleBloodGroups = BLOOD_COMPATIBILITY[request.bloodGroup] || [];
     
+    console.log(`🔍 Searching for donors with blood groups: ${compatibleBloodGroups.join(', ')}`);
+
+    // Find available donors with compatible blood groups
     const donors = await Donor.find({
       bloodGroup: { $in: compatibleBloodGroups },
-      isAvailable: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: request.location.coordinates
-          },
-          $maxDistance: 50000 // 50km radius
-        }
-      }
+      isAvailable:true,
+      'location.coordinates': { $exists: true, $ne: null }
     });
 
-    // Calculate match scores
-    const scoredDonors = donors.map(donor => ({
-      donor: donor._id,
-      donorData: donor,
-      matchScore: calculateMatchScore(donor, request),
-      distance: calculateDistance(
+    console.log(`📊 Found ${donors.length} potential donors`);
+
+    // Calculate match scores and distances
+    const scoredDonors = [];
+
+    for (const donor of donors) {
+      // Validate donor location
+      if (!donor.location?.coordinates || donor.location.coordinates.length !== 2) {
+        console.log(`⚠️ Skipping donor ${donor._id} - invalid location`);
+        continue;
+      }
+
+      const distance = calculateDistance(
         donor.location.coordinates,
         request.location.coordinates
-      )
-    }));
+      );
 
-    // Filter out zero scores and sort
+      // Skip if too far (> 100km)
+      if (distance > 100) {
+        continue;
+      }
+
+      const matchScore = calculateMatchScore(donor, request, distance);
+
+      // Only include if score > 30
+      if (matchScore > 30) {
+        scoredDonors.push({
+          donor: donor._id,
+          donorData: donor,
+          matchScore,
+          distance: Math.round(distance * 10) / 10
+        });
+      }
+    }
+
+    console.log(`✅ Found ${scoredDonors.length} valid matches`);
+
+    // Sort by match score
     const validMatches = scoredDonors
-      .filter(match => match.matchScore > 0)
       .sort((a, b) => b.matchScore - a.matchScore);
 
-    // Take top matches based on units required
-    const topMatches = validMatches.slice(0, request.unitsRequired * 3); // 3x buffer
+    // Take top matches
+    const topMatches = validMatches.slice(0, Math.min(10, request.unitsRequired * 3));
 
     // Update request with matched donors
     request.matchedDonors = topMatches.map(match => ({
       donor: match.donor,
       matchScore: match.matchScore,
+      distance: match.distance,  // ✅ Include distance
       notifiedAt: new Date(),
       response: 'pending'
     }));
 
+    // Update request status
+    if (topMatches.length === 0) {
+      request.status = 'pending';
+    } else {
+      request.status = 'matched';
+    }
+
     await request.save();
+
+    console.log(`💾 Saved ${topMatches.length} matches to request ${requestId}`);
 
     return {
       success: true,
@@ -155,6 +184,7 @@ const findMatchingDonors = async (requestId) => {
     };
 
   } catch (error) {
+    console.error('❌ Matching error:', error);
     throw error;
   }
 };

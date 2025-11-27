@@ -197,7 +197,7 @@ const getDonorRequests = async (req, res) => {
         bloodGroup: request.bloodGroup,
         unitsNeeded: request.unitsRequired,
         urgencyLevel: request.urgency,
-        requiredBy: request.createdAt, // ❌ No requiredBy in schema, use createdAt
+        requiredBy: request.requiredBy || request.createdAt, // ✅ CORRECT
         createdAt: request.createdAt,
         status: request.status,
         

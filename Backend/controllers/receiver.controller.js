@@ -216,7 +216,7 @@ const getMyRequests = async (req, res) => {
         bloodGroup: request.bloodGroup,
         urgencyLevel: request.urgency, // ✅ Map urgency to urgencyLevel
         unitsNeeded: request.unitsRequired, // ✅ Map unitsRequired to unitsNeeded
-        requiredBy: request.createdAt, // ❌ No requiredBy in schema
+        requiredBy: request.requiredBy || request.createdAt, // ✅ CORRECT
         createdAt: request.createdAt,
         status: request.status,
         

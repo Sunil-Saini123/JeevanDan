@@ -115,10 +115,10 @@ function DonorRegister() {
         age: parseInt(formData.age),
         gender: formData.gender,
         weight: parseInt(formData.weight),
-        address: formData.address,
         location: location ? {
           type: 'Point',
-          coordinates: [location.longitude, location.latitude]
+          coordinates: [location.longitude, location.latitude],
+          address: formData.address  // ✅ ADD THIS LINE
         } : null
       };
 
