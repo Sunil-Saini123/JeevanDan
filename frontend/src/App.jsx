@@ -19,6 +19,7 @@ import ReceiverDashboard from './pages/receiver/Dashboard';
 import CreateRequest from './pages/receiver/CreateRequest';
 import MyRequests from './pages/receiver/MyRequests';
 import MatchedDonors from './pages/receiver/MatchedDonors';
+import ReceiverHistory from './pages/receiver/ReceiverHistory.jsx';
 
 function App() {
   return (
@@ -72,6 +73,11 @@ function App() {
           <Route path="/receiver/request/:requestId/donors" element={
             <ProtectedRoute allowedRole="receiver">
               <MatchedDonors />
+            </ProtectedRoute>
+          } />
+          <Route path="/receiver/history" element={
+            <ProtectedRoute allowedRole="receiver">
+              <ReceiverHistory />
             </ProtectedRoute>
           } />
           

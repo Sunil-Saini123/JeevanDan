@@ -87,7 +87,7 @@ const requestSchema = new mongoose.Schema({
     matchScore: { type: Number, min: 0, max: 100 },
     distance: { type: Number, min: 0 },
     notifiedAt: Date,
-    response: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+    response: { type: String, enum: ['pending', 'accepted', 'rejected', 'expired', 'superseded'], default: 'pending' },
     respondedAt: Date,
     // REPLACE donationStatus enum & add lifecycle fields
     donationStatus: {
@@ -99,7 +99,8 @@ const requestSchema = new mongoose.Schema({
     confirmationCode: { type: String }, // OTP
     acceptedAt: Date,
     startedAt: Date,
-    completedAt: Date
+    completedAt: Date,
+    priority: { type: Number, default: 1 }
   }],
   
   // ✅ Add expiration for auto-cleanup

@@ -21,6 +21,19 @@ const receiverSchema = new mongoose.Schema({
   age: { type: Number, min: 0 },
   gender: { type: String, enum: ["Male", "Female", "Other"] },
 
+  // Add after existing fields, before timestamps
+  donationHistory: [
+    {
+      requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Request' },
+      bloodGroup: String,
+      unitsReceived: { type: Number, min: 1 },
+      receivedOn: { type: Date, default: Date.now },
+      donors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Donor' }],
+      hospital: String,
+      notes: String
+    }
+  ],
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {

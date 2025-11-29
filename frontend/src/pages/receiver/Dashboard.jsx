@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../utils/AuthContext';
 
 function ReceiverDashboard() {
@@ -92,7 +92,7 @@ function ReceiverDashboard() {
         {/* Quick Actions */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h3>
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             <button
               onClick={() => navigate('/receiver/create-request')}
               className="bg-red-600 text-white py-4 px-6 rounded-lg hover:bg-red-700 transition text-lg font-semibold"
@@ -104,6 +104,12 @@ function ReceiverDashboard() {
               className="bg-blue-600 text-white py-4 px-6 rounded-lg hover:bg-blue-700 transition text-lg font-semibold"
             >
               📋 My Requests
+            </button>
+            <button
+              onClick={() => navigate('/receiver/history')}
+              className="bg-green-600 text-white py-4 px-6 rounded-lg hover:bg-green-700 transition text-lg font-semibold"
+            >
+              📊 Donation History
             </button>
           </div>
         </div>

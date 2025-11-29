@@ -154,23 +154,56 @@ const findMatchingDonors = async (requestId) => {
       .sort((a, b) => b.matchScore - a.matchScore);
 
     // Take top matches
-    const topMatches = validMatches.slice(0, Math.min(10, request.unitsRequired * 3));
+    // const topMatches = validMatches.slice(0, Math.min(10, request.unitsRequired * 3));
+    // ✅ CHANGED: Parallel notification strategy
+    const getNotificationCount = (urgency, unitsRequired) => {
+      const buffer = urgency === 'Critical' ? 3 : urgency === 'Urgent' ? 2 : 1;
+      return Math.min(unitsRequired + buffer, validMatches.length);
+    };
+
+    const notifyCount = getNotificationCount(request.urgency, request.unitsRequired);
+
+    // Group donors by similarity (±5 score, ±2 km)
+    const topMatch = validMatches[0];
+    const similarDonors = validMatches.filter((m, idx) => {
+      if (idx === 0) return true;
+      return Math.abs(m.matchScore - topMatch.matchScore) <= 5 &&
+             Math.abs(m.distance - topMatch.distance) <= 2;
+    });
+
+    const finalCount = Math.max(similarDonors.length, notifyCount);
+    const topMatches = validMatches.slice(0, finalCount);
+
+    // Add this helper function before the matchedDonors mapping (around line 175)
+    const getExpiryHours = (urgency) => {
+      switch (urgency) {
+        case 'Critical': return 6;
+        case 'Urgent': return 12;
+        case 'Normal': return 24;
+        default: return 24;
+      }
+    };
+
+    const expiryHours = getExpiryHours(request.urgency);
 
     // Update request with matched donors
-    request.matchedDonors = topMatches.map(match => ({
+    request.matchedDonors = topMatches.map((match, index) => ({
       donor: match.donor,
       matchScore: match.matchScore,
       distance: match.distance,
       notifiedAt: new Date(),
+      notificationExpiresAt: new Date(Date.now() + expiryHours * 60 * 60 * 1000),
       response: 'pending',
       donationStatus: 'scheduled',
-      unitsCommitted: 1
+      unitsCommitted: 1,
+      priority: index + 1
     }));
     // REMOVE manual status assignment; let model pre-save handle
     // if (topMatches.length === 0) request.status = 'pending'; else request.status = 'matched';
     await request.save();
 
     console.log(`💾 Saved ${topMatches.length} matches to request ${requestId}`);
+    console.log(`💾 Notified ${topMatches.length} donors (${similarDonors.length} similar) for request ${requestId}`);
 
     return {
       success: true,

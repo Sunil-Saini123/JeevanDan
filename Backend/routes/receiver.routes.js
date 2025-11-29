@@ -16,7 +16,8 @@ const {
   getMatchedDonors,
   cancelRequest,
   startDonation,
-  completeDonation
+  completeDonation,
+  getReceiverHistory
 } = require('../controllers/receiver.controller');
 
 // Public routes
@@ -32,5 +33,6 @@ router.get('/matched-donors/:requestId', authMiddleware, isReceiver, getMatchedD
 router.delete('/cancel-request/:requestId', authMiddleware, isReceiver, cancelRequest);
 router.post('/request/:requestId/start-donation', authMiddleware, isReceiver, startDonation);
 router.post('/request/:requestId/complete-donation', authMiddleware, isReceiver, completeDonation);
+router.get('/history', authMiddleware, isReceiver, getReceiverHistory);
 
 module.exports = router;

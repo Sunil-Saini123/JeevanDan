@@ -1,6 +1,7 @@
 const Donor = require('../models/donor.models');
 const Request = require('../models/request.model');
 const { hashPassword, comparePassword, generateToken } = require('../services/auth.services');
+const { cascadeToNextDonor } = require('../services/matching.service');
 
 // Register Donor
 const registerDonor = async (req, res) => {
@@ -93,11 +94,21 @@ const loginDonor = async (req, res) => {
 const getDonorProfile = async (req, res) => {
   try {
     const donor = await Donor.findById(req.user.id).select('-password');
-    if (!donor) {
-      return res.status(404).json({ error: 'Donor not found' });
+    if (!donor) return res.status(404).json({ error: 'Donor not found' });
+
+    const canDonate = donor.canDonate;
+    let nextAvailableDate = null;
+    
+    if (donor.lastDonationDate && !canDonate) {
+      nextAvailableDate = new Date(donor.lastDonationDate);
+      nextAvailableDate.setMonth(nextAvailableDate.getMonth() + 3);
     }
-    // ✅ FIX: Wrap in object
-    res.json({ donor });
+
+    res.json({
+      donor: donor.toObject(),
+      canDonate,
+      nextAvailableDate
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -109,17 +120,32 @@ const updateDonorProfile = async (req, res) => {
     // Don't allow updating password or email through this endpoint
     const { password, email, ...updateData } = req.body;
 
-    const donor = await Donor.findByIdAndUpdate(
+    const donor = await Donor.findById(req.user.id);
+    if (!donor) return res.status(404).json({ error: 'Donor not found' });
+
+    // ✅ CHECK: If trying to enable availability, validate 3-month rule
+    if (req.body.isAvailable === true || req.body.isAvailable === 'true') {
+      if (donor.lastDonationDate) {
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        
+        if (new Date(donor.lastDonationDate) > threeMonthsAgo) {
+          return res.status(400).json({ 
+            error: 'You must wait 3 months after last donation before becoming available again.',
+            lastDonationDate: donor.lastDonationDate,
+            canDonateAfter: new Date(new Date(donor.lastDonationDate).setMonth(new Date(donor.lastDonationDate).getMonth() + 3))
+          });
+        }
+      }
+    }
+
+    const updatedDonor = await Donor.findByIdAndUpdate(
       req.user.id,
       { $set: updateData },
       { new: true, runValidators: true }
     ).select('-password');
 
-    if (!donor) {
-      return res.status(404).json({ error: 'Donor not found' });
-    }
-
-    res.json({ message: 'Profile updated successfully', donor });
+    res.json({ message: 'Profile updated successfully', donor: updatedDonor });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -181,7 +207,8 @@ const getDonorRequests = async (req, res) => {
     }
 
     const requests = await Request.find({
-      'matchedDonors.donor': req.user.id
+      'matchedDonors.donor': req.user.id,
+      status: { $nin: ['completed', 'cancelled', 'expired'] }
     })
       .populate('receiver', 'fullName email contactNumber')
       .sort({ createdAt: -1 });
@@ -224,7 +251,8 @@ const getDonorRequests = async (req, res) => {
           fullName: request.receiver?.fullName,
           email: request.receiver?.email,
           contactNumber: request.receiver?.contactNumber
-        } : null
+        } : null,
+        priority: donorMatch?.priority,
       };
     });
 
@@ -253,6 +281,18 @@ const acceptRequest = async (req, res) => {
     if (!donorMatch) return res.status(404).json({ error: 'You are not matched to this request' });
     if (donorMatch.response !== 'pending') return res.status(400).json({ error: 'Already responded' });
 
+    // Check if already full
+    const currentAccepted = request.matchedDonors.filter(m => m.response === 'accepted').length;
+    if (currentAccepted >= request.unitsRequired) {
+      donorMatch.response = 'superseded';
+      donorMatch.respondedAt = new Date();
+      await request.save();
+      return res.status(409).json({ 
+        error: 'This request has already been accepted by enough donors.',
+        status: request.status
+      });
+    }
+
     donorMatch.response = 'accepted';
     donorMatch.respondedAt = new Date();
     donorMatch.acceptedAt = new Date();
@@ -260,6 +300,16 @@ const acceptRequest = async (req, res) => {
     if (!donorMatch.donationStatus) donorMatch.donationStatus = 'scheduled';
 
     request.unitsAccepted = (request.unitsAccepted || 0) + (donorMatch.unitsCommitted || 1);
+
+    // Mark remaining pending as superseded if limit reached
+    if (request.unitsAccepted >= request.unitsRequired) {
+      request.matchedDonors.forEach(m => {
+        if (m.response === 'pending') {
+          m.response = 'superseded';
+          m.respondedAt = new Date();
+        }
+      });
+    }
 
     await request.save();
 
@@ -295,6 +345,7 @@ const rejectRequest = async (req, res) => {
     donorMatch.confirmationCode = undefined;
 
     await request.save();
+    await cascadeToNextDonor(requestId);
 
     res.json({ message: 'Request rejected', status: request.status });
   } catch (error) {

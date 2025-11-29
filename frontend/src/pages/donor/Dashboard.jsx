@@ -21,9 +21,17 @@ function DonorDashboard() {
     address: ''
   });
   const [updating, setUpdating] = useState(false);
+  const [donorInfo, setDonorInfo] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const res = await api.get('/donor/profile');
+      setDonorInfo(res.data);
+    })();
   }, []);
 
   const loadDashboardData = async () => {
@@ -52,6 +60,12 @@ function DonorDashboard() {
 
   const toggleAvailability = async () => {
     try {
+      // Check if trying to enable and donor is in cooldown
+      if (!stats.isAvailable && donorInfo && !donorInfo.canDonate) {
+        alert(`⏳ You must wait 3 months after last donation.\nYou can donate again after ${new Date(donorInfo.nextAvailableDate).toLocaleDateString()}`);
+        return;
+      }
+
       const response = await api.put('/donor/availability', {
         isAvailable: !stats.isAvailable
       });
@@ -61,7 +75,7 @@ function DonorDashboard() {
       });
     } catch (error) {
       console.error('Failed to update availability:', error);
-      alert('Failed to update availability');
+      alert(error.response?.data?.error || 'Failed to update availability');
     }
   };
 
@@ -320,6 +334,12 @@ function DonorDashboard() {
                 ? '💡 You will receive blood request notifications' 
                 : '💡 You won\'t receive any notifications'}
             </p>
+
+            {donorInfo && !donorInfo.canDonate && donorInfo.nextAvailableDate && (
+              <div className="text-xs bg-white bg-opacity-20 rounded px-2 py-1 mt-2">
+                ⏳ Available after: {new Date(donorInfo.nextAvailableDate).toLocaleDateString()}
+              </div>
+            )}
           </div>
         </div>
 

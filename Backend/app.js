@@ -3,7 +3,10 @@ const cors = require('cors');
 const donorRoutes = require('./routes/donor.routes');
 const receiverRoutes = require('./routes/receiver.routes');
 const matchingRoutes = require('./routes/matching.routes'); // 🆕 ADD THIS
-
+const cron = require('node-cron');
+const { cascadeToNextDonor } = require('./services/matching.service');
+const Request = require('./models/request.model');
+const Donor = require('./models/donor.models'); // 🆕 ADD THIS
 
 const app = express();
 
@@ -34,6 +37,44 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong!' });
+});
+
+cron.schedule('0 * * * *', async () => {
+  console.log('🔄 Running cascade check...');
+  try {
+    const activeRequests = await Request.find({
+      status: { $nin: ['completed', 'cancelled', 'expired'] }
+    });
+
+    for (const request of activeRequests) {
+      await cascadeToNextDonor(request._id);
+    }
+  } catch (error) {
+    console.error('❌ Cron error:', error);
+  }
+});
+
+// Add new cron job (runs daily at midnight)
+cron.schedule('0 0 * * *', async () => {
+  console.log('🔄 Checking donor availability cooldowns...');
+  try {
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    const result = await Donor.updateMany(
+      {
+        isAvailable: false,
+        lastDonationDate: { $lte: threeMonthsAgo }
+      },
+      {
+        $set: { isAvailable: true }
+      }
+    );
+
+    console.log(`✅ Re-enabled ${result.modifiedCount} donors after 3-month cooldown`);
+  } catch (error) {
+    console.error('❌ Availability cron error:', error);
+  }
 });
 
 module.exports = app;

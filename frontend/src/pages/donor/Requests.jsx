@@ -236,6 +236,13 @@ function DonorRequests() {
                   <p>Posted: {new Date(request.createdAt).toLocaleDateString()}</p>
                 </div>
 
+                {/* Priority Info */}
+                {request.response === 'pending' && !request.isExpired && (
+                  <div className="text-xs text-gray-500 mb-2">
+                    Priority: #{request.priority} • Expires: {new Date(request.notificationExpiresAt).toLocaleString()}
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 {request.response === 'pending' && request.donationStatus === 'scheduled' && (
                   <div className="flex gap-3">
@@ -265,6 +272,12 @@ function DonorRequests() {
                 {request.response === 'rejected' && (
                   <div className="bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-center">
                     You rejected this request
+                  </div>
+                )}
+
+                {request.response === 'superseded' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    ✓ This request was accepted by other donors. Thank you!
                   </div>
                 )}
 

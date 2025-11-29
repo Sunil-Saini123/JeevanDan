@@ -203,7 +203,12 @@ const createRequest = async (req, res) => {
 // Replace getMyRequests (Line ~140-151):
 const getMyRequests = async (req, res) => {
   try {
-    const requests = await Request.find({ receiver: req.user.id })
+    const receiverId = req.user.id;
+
+    const requests = await Request.find({
+      receiver: receiverId,
+      status: { $nin: ['completed', 'cancelled', 'expired'] }
+    })
       .populate('matchedDonors.donor', 'fullName email contactNumber bloodGroup')
       .sort({ createdAt: -1 });
 
@@ -387,8 +392,32 @@ const completeDonation = async (req, res) => {
     // Update donor stats (make unavailable)
     await Donor.findByIdAndUpdate(donorId, {
       $inc: { totalDonations: 1 },
-      $set: { lastDonationDate: new Date(), isAvailable: false }
+      $set: { 
+        lastDonationDate: new Date(), 
+        isAvailable: false  // ✅ Force unavailable for 3 months
+      }
     });
+
+    // Add to receiver history if fully completed
+    if (request.status === 'completed') {
+      const completedDonors = request.matchedDonors
+        .filter(m => m.donationStatus === 'completed')
+        .map(m => m.donor._id || m.donor);
+
+      await Receiver.findByIdAndUpdate(receiverId, {
+        $push: {
+          donationHistory: {
+            requestId: request._id,
+            bloodGroup: request.bloodGroup,
+            unitsReceived: request.unitsMatched,
+            receivedOn: new Date(),
+            donors: completedDonors,
+            hospital: request.location?.address?.hospital,
+            notes: `Urgency: ${request.urgency}`
+          }
+        }
+      });
+    }
 
     res.json({ message: 'Donation completed', status: request.status });
   } catch (error) {
@@ -396,6 +425,22 @@ const completeDonation = async (req, res) => {
   }
 };
 
+// Add before module.exports
+const getReceiverHistory = async (req, res) => {
+  try {
+    const receiver = await Receiver.findById(req.user.id)
+      .populate('donationHistory.donors', 'fullName bloodGroup contactNumber')
+      .lean();
+
+    if (!receiver) return res.status(404).json({ error: 'Receiver not found' });
+
+    res.json({ history: receiver.donationHistory || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Add to exports
 module.exports = {
   registerReceiver,
   loginReceiver,
@@ -406,5 +451,6 @@ module.exports = {
   getMatchedDonors,
   cancelRequest,
   startDonation,
-  completeDonation
+  completeDonation,
+  getReceiverHistory
 };
