@@ -10,6 +10,7 @@ function MatchedDonors() {
   const [donors, setDonors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [otpInput, setOtpInput] = useState('');
 
   useEffect(() => {
     loadMatchedDonors();
@@ -17,7 +18,7 @@ function MatchedDonors() {
 
   const loadMatchedDonors = async () => {
     try {
-      const response = await api.get(`/receiver/request/${requestId}/donors`);
+      const response = await api.get(`/receiver/matched-donors/${requestId}`); // fixed path
       
       setRequest({
         id: response.data?.requestId,
@@ -50,6 +51,18 @@ function MatchedDonors() {
       pending: 'bg-yellow-100 text-yellow-800'
     };
     return badges[response] || 'bg-gray-100 text-gray-800';
+  };
+
+  const startDonation = async (donorId) => {
+    if (!otpInput) return alert('Enter OTP from donor');
+    await api.post(`/receiver/request/${requestId}/start-donation`, { donorId, otp: otpInput });
+    setOtpInput('');
+    await loadMatchedDonors();
+  };
+
+  const completeDonation = async (donorId) => {
+    await api.post(`/receiver/request/${requestId}/complete-donation`, { donorId, unitsDonated: 1 });
+    await loadMatchedDonors();
   };
 
   if (loading) {
@@ -178,6 +191,36 @@ function MatchedDonors() {
                         {new Date(match.respondedAt).toLocaleString()}
                       </p>
                     )}
+                  </div>
+                )}
+
+                {match.response === 'accepted' && match.donationStatus === 'scheduled' && (
+                  <div className="mt-4 space-y-2">
+                    <input
+                      className="border px-3 py-2 rounded w-full text-sm"
+                      placeholder="Enter donor OTP"
+                      value={otpInput}
+                      onChange={e => setOtpInput(e.target.value)}
+                    />
+                    <button
+                      onClick={() => startDonation(match.donor.id)}
+                      className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+                    >
+                      ▶ Start Donation
+                    </button>
+                  </div>
+                )}
+                {match.donationStatus === 'started' && (
+                  <button
+                    onClick={() => completeDonation(match.donor.id)}
+                    className="mt-4 w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
+                  >
+                    ✅ Complete Donation
+                  </button>
+                )}
+                {match.donationStatus === 'completed' && (
+                  <div className="mt-4 bg-green-100 text-green-800 px-3 py-2 rounded text-sm font-semibold">
+                    Donation Completed
                   </div>
                 )}
               </div>

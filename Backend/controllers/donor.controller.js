@@ -183,10 +183,9 @@ const getDonorRequests = async (req, res) => {
     const requests = await Request.find({
       'matchedDonors.donor': req.user.id
     })
-    .populate('receiver', 'fullName email contactNumber')
-    .sort({ createdAt: -1 });
+      .populate('receiver', 'fullName email contactNumber')
+      .sort({ createdAt: -1 });
 
-    // ✅ Transform based on ACTUAL schema
     const transformedRequests = requests.map(request => {
       const donorMatch = request.matchedDonors.find(
         m => m.donor.toString() === req.user.id
@@ -197,33 +196,30 @@ const getDonorRequests = async (req, res) => {
         bloodGroup: request.bloodGroup,
         unitsNeeded: request.unitsRequired,
         urgencyLevel: request.urgency,
-        requiredBy: request.requiredBy || request.createdAt, // ✅ CORRECT
+        requiredBy: request.requiredBy || request.createdAt,
         createdAt: request.createdAt,
         status: request.status,
-        
-        // ✅ patientDetails exists in schema
         patientDetails: request.patientDetails ? {
           name: request.patientDetails.name,
           age: request.patientDetails.age,
           gender: request.patientDetails.gender,
           medicalCondition: request.patientDetails.medicalCondition
         } : null,
-        
-        // ✅ location.address is an object
         address: request.location ? {
           hospital: request.location.address?.hospital,
           city: request.location.address?.city,
           state: request.location.address?.state,
           pincode: request.location.address?.pincode
         } : null,
-        
-        // ✅ Donor-specific data from matchedDonors array
         response: donorMatch?.response || 'pending',
         respondedAt: donorMatch?.respondedAt,
         matchScore: donorMatch?.matchScore,
         distance: donorMatch?.distance,
-        
-        // ✅ Receiver details (only if accepted)
+        donationStatus: donorMatch?.donationStatus || 'scheduled',           // ✅ added
+        confirmationCode: donorMatch?.confirmationCode || null,             // ✅ added
+        acceptedAt: donorMatch?.acceptedAt || null,                         // ✅ optional
+        startedAt: donorMatch?.startedAt || null,                           // ✅ optional
+        completedAt: donorMatch?.completedAt || null,                       // ✅ optional
         receiver: donorMatch?.response === 'accepted' ? {
           fullName: request.receiver?.fullName,
           email: request.receiver?.email,
@@ -238,6 +234,9 @@ const getDonorRequests = async (req, res) => {
   }
 };
 
+// Generate OTP
+const genOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
 // Accept Request
 const acceptRequest = async (req, res) => {
   try {
@@ -248,46 +247,27 @@ const acceptRequest = async (req, res) => {
       'matchedDonors.donor': req.user.id
     });
 
-    if (!request) {
-      return res.status(404).json({ error: 'Request not found' });
-    }
+    if (!request) return res.status(404).json({ error: 'Request not found' });
 
-    // Update the specific donor's response
-    const donorMatch = request.matchedDonors.find(
-      m => m.donor.toString() === req.user.id
-    );
-
-    if (!donorMatch) {
-      return res.status(404).json({ error: 'You are not matched to this request' });
-    }
-
-    if (donorMatch.response !== 'pending') {
-      return res.status(400).json({ error: 'Request already responded to' });
-    }
+    const donorMatch = request.matchedDonors.find(m => m.donor.toString() === req.user.id);
+    if (!donorMatch) return res.status(404).json({ error: 'You are not matched to this request' });
+    if (donorMatch.response !== 'pending') return res.status(400).json({ error: 'Already responded' });
 
     donorMatch.response = 'accepted';
     donorMatch.respondedAt = new Date();
+    donorMatch.acceptedAt = new Date();
+    donorMatch.confirmationCode = genOTP();
+    if (!donorMatch.donationStatus) donorMatch.donationStatus = 'scheduled';
 
-    // Increment unitsMatched
-    request.unitsMatched += 1;
+    request.unitsAccepted = (request.unitsAccepted || 0) + (donorMatch.unitsCommitted || 1);
 
     await request.save();
 
-    // Update donor's donation history
-    await Donor.findByIdAndUpdate(req.user.id, {
-      $push: {
-        donationHistory: {
-          requestId: request._id,
-          donatedOn: new Date()
-        }
-      },
-      $inc: { totalDonations: 1 },
-      lastDonationDate: new Date()
-    });
-
-    res.json({ 
-      message: 'Request accepted successfully', 
-      request 
+    res.json({
+      message: 'Request accepted. Share OTP with receiver.',
+      otp: donorMatch.confirmationCode,
+      donationStatus: donorMatch.donationStatus,
+      status: request.status
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -304,31 +284,19 @@ const rejectRequest = async (req, res) => {
       'matchedDonors.donor': req.user.id
     });
 
-    if (!request) {
-      return res.status(404).json({ error: 'Request not found' });
-    }
+    if (!request) return res.status(404).json({ error: 'Request not found' });
 
-    const donorMatch = request.matchedDonors.find(
-      m => m.donor.toString() === req.user.id
-    );
-
-    if (!donorMatch) {
-      return res.status(404).json({ error: 'You are not matched to this request' });
-    }
-
-    if (donorMatch.response !== 'pending') {
-      return res.status(400).json({ error: 'Request already responded to' });
-    }
+    const donorMatch = request.matchedDonors.find(m => m.donor.toString() === req.user.id);
+    if (!donorMatch) return res.status(404).json({ error: 'You are not matched to this request' });
+    if (donorMatch.response !== 'pending') return res.status(400).json({ error: 'Already responded' });
 
     donorMatch.response = 'rejected';
     donorMatch.respondedAt = new Date();
+    donorMatch.confirmationCode = undefined;
 
     await request.save();
 
-    res.json({ 
-      message: 'Request rejected', 
-      request 
-    });
+    res.json({ message: 'Request rejected', status: request.status });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

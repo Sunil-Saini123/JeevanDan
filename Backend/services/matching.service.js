@@ -160,18 +160,14 @@ const findMatchingDonors = async (requestId) => {
     request.matchedDonors = topMatches.map(match => ({
       donor: match.donor,
       matchScore: match.matchScore,
-      distance: match.distance,  // ✅ Include distance
+      distance: match.distance,
       notifiedAt: new Date(),
-      response: 'pending'
+      response: 'pending',
+      donationStatus: 'scheduled',
+      unitsCommitted: 1
     }));
-
-    // Update request status
-    if (topMatches.length === 0) {
-      request.status = 'pending';
-    } else {
-      request.status = 'matched';
-    }
-
+    // REMOVE manual status assignment; let model pre-save handle
+    // if (topMatches.length === 0) request.status = 'pending'; else request.status = 'matched';
     await request.save();
 
     console.log(`💾 Saved ${topMatches.length} matches to request ${requestId}`);

@@ -36,6 +36,12 @@ const requestSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  // ADD: unitsAccepted (donors who accepted, before completion)
+  unitsAccepted: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   
   // ✅ FIXED: location.address should be an OBJECT
   location: {
@@ -59,7 +65,7 @@ const requestSchema = new mongoose.Schema({
   
   status: {
     type: String,
-    enum: ['pending', 'partially_matched', 'fully_matched', 'completed', 'cancelled', 'expired'],
+    enum: ['pending', 'matched', 'partially_matched', 'fully_matched', 'completed', 'cancelled', 'expired'],
     default: 'pending'
   },
   
@@ -77,31 +83,23 @@ const requestSchema = new mongoose.Schema({
   },
   
   matchedDonors: [{
-    donor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Donor'
-    },
-    matchScore: {
-      type: Number,
-      min: 0,
-      max: 100
-    },
-    distance: {  // ✅ Added distance field
-      type: Number,
-      min: 0
-    },
+    donor: { type: mongoose.Schema.Types.ObjectId, ref: 'Donor' },
+    matchScore: { type: Number, min: 0, max: 100 },
+    distance: { type: Number, min: 0 },
     notifiedAt: Date,
-    response: {
-      type: String,
-      enum: ['pending', 'accepted', 'rejected'],
-      default: 'pending'
-    },
+    response: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
     respondedAt: Date,
+    // REPLACE donationStatus enum & add lifecycle fields
     donationStatus: {
       type: String,
-      enum: ['scheduled', 'completed', 'cancelled'],
+      enum: ['scheduled', 'started', 'completed', 'cancelled'],
       default: 'scheduled'
-    }
+    },
+    unitsCommitted: { type: Number, min: 1, default: 1 },
+    confirmationCode: { type: String }, // OTP
+    acceptedAt: Date,
+    startedAt: Date,
+    completedAt: Date
   }],
   
   // ✅ Add expiration for auto-cleanup
@@ -115,24 +113,32 @@ const requestSchema = new mongoose.Schema({
 });
 
 // Index for geospatial queries
-requestSchema.index({ 'location.coordinates': '2dsphere' });
+// requestSchema.index({ 'location.coordinates': '2dsphere' });
 
 // ✅ Set expiration time based on requiredBy
 requestSchema.pre('save', function(next) {
-  // Auto-expire 24 hours after requiredBy date
   if (this.requiredBy) {
     this.expiresAt = new Date(this.requiredBy.getTime() + 24 * 60 * 60 * 1000);
   }
-  
-  // Update status based on units matched
-  if (this.unitsMatched === 0) {
-    this.status = 'pending';
-  } else if (this.unitsMatched < this.unitsRequired) {
-    this.status = 'partially_matched';
-  } else if (this.unitsMatched >= this.unitsRequired) {
-    this.status = 'fully_matched';
+
+  const hasMatches = Array.isArray(this.matchedDonors) && this.matchedDonors.length > 0;
+
+  if (this.status === 'cancelled' || this.status === 'expired') {
+    return next();
   }
-  
+
+  if ((this.unitsMatched || 0) >= this.unitsRequired) {
+    this.status = 'completed';
+  } else if ((this.unitsAccepted || 0) >= this.unitsRequired) {
+    this.status = 'fully_matched';
+  } else if ((this.unitsAccepted || 0) > 0) {
+    this.status = 'partially_matched';
+  } else if (hasMatches) {
+    this.status = 'matched';
+  } else {
+    this.status = 'pending';
+  }
+
   next();
 });
 

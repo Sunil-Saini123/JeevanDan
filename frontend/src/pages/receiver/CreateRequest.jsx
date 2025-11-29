@@ -97,7 +97,7 @@ function CreateRequest() {
         notes: formData.notes
       };
 
-      await api.post('/receiver/request', payload);
+      await api.post('/receiver/create-request', payload);
       navigate('/receiver/my-requests');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create request');

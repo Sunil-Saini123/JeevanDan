@@ -270,6 +270,7 @@ const getMatchedDonors = async (req, res) => {
       return {
         id: match._id,
         response: match.response,
+        donationStatus: match.donationStatus || 'scheduled',
         matchScore: match.matchScore || 0,
         distance: match.distance || 0,
         respondedAt: match.respondedAt,
@@ -325,6 +326,76 @@ const cancelRequest = async (req, res) => {
   }
 };
 
+const startDonation = async (req, res) => {
+  try {
+    const receiverId = req.user.id;
+    const { requestId } = req.params;
+    const { donorId, otp } = req.body;
+
+    const request = await Request.findOne({
+      _id: requestId,
+      receiver: receiverId,
+      'matchedDonors.donor': donorId
+    });
+
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    const md = request.matchedDonors.find(m => m.donor.toString() === donorId);
+    if (!md) return res.status(404).json({ error: 'Donor match not found' });
+    if (md.response !== 'accepted') return res.status(400).json({ error: 'Donor not accepted yet' });
+    if (md.donationStatus !== 'scheduled') return res.status(400).json({ error: 'Invalid donation state' });
+    if (!md.confirmationCode) return res.status(400).json({ error: 'No OTP set' });
+    if (md.confirmationCode !== String(otp)) return res.status(400).json({ error: 'Invalid OTP' });
+
+    md.donationStatus = 'started';
+    md.startedAt = new Date();
+
+    await request.save();
+
+    res.json({ message: 'Donation started', status: request.status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const completeDonation = async (req, res) => {
+  try {
+    const receiverId = req.user.id;
+    const { requestId } = req.params;
+    const { donorId, unitsDonated = 1 } = req.body;
+
+    const request = await Request.findOne({
+      _id: requestId,
+      receiver: receiverId,
+      'matchedDonors.donor': donorId
+    });
+
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    const md = request.matchedDonors.find(m => m.donor.toString() === donorId);
+    if (!md) return res.status(404).json({ error: 'Donor match not found' });
+    if (md.donationStatus !== 'started') return res.status(400).json({ error: 'Donation not started' });
+
+    md.donationStatus = 'completed';
+    md.completedAt = new Date();
+
+    // Increment confirmed units
+    request.unitsMatched = (request.unitsMatched || 0) + Math.max(1, Number(unitsDonated));
+
+    await request.save();
+
+    // Update donor stats (make unavailable)
+    await Donor.findByIdAndUpdate(donorId, {
+      $inc: { totalDonations: 1 },
+      $set: { lastDonationDate: new Date(), isAvailable: false }
+    });
+
+    res.json({ message: 'Donation completed', status: request.status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   registerReceiver,
   loginReceiver,
@@ -333,5 +404,7 @@ module.exports = {
   createRequest,
   getMyRequests,
   getMatchedDonors,
-  cancelRequest
+  cancelRequest,
+  startDonation,
+  completeDonation
 };

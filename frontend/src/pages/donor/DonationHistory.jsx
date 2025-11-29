@@ -16,7 +16,7 @@ function DonationHistory() {
 
   const loadDonationHistory = async () => {
     try {
-      const response = await api.get('/donor/donations');
+      const response = await api.get('/donor/donation-history');
       
       // ✅ Defensive check
       const fetchedDonations = response.data?.donations;

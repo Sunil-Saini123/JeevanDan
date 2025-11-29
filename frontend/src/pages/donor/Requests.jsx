@@ -37,15 +37,14 @@ function DonorRequests() {
   };
 
   const handleAccept = async (requestId) => {
-    if (!confirm('Are you sure you want to accept this request?')) return;
-
+    if (!confirm('Accept this request?')) return;
     setActionLoading(requestId);
     try {
-      await api.post(`/donor/request/${requestId}/accept`);
-      loadRequests(); // Reload
-      alert('✅ Request accepted! The receiver will be notified.');
+      const res = await api.post(`/donor/accept-request/${requestId}`);
+      alert(`✅ Accepted. OTP to share: ${res.data?.otp || 'N/A'}`);
+      loadRequests();
     } catch (err) {
-      alert('Failed to accept request: ' + (err.response?.data?.error || 'Unknown error'));
+      alert('Failed to accept request');
     } finally {
       setActionLoading(null);
     }
@@ -56,7 +55,7 @@ function DonorRequests() {
 
     setActionLoading(requestId);
     try {
-      await api.post(`/donor/request/${requestId}/reject`);
+      await api.post(`/donor/reject-request/${requestId}`);
       loadRequests(); // Reload
       alert('Request rejected');
     } catch (err) {
@@ -82,6 +81,16 @@ function DonorRequests() {
       pending: 'bg-yellow-100 text-yellow-800'
     };
     return badges[response] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getDonationStatusBadge = (status) => {
+    const map = {
+      scheduled: 'bg-blue-100 text-blue-700',
+      started: 'bg-indigo-100 text-indigo-700',
+      completed: 'bg-green-100 text-green-700',
+      cancelled: 'bg-red-100 text-red-700'
+    };
+    return map[status] || 'bg-gray-100 text-gray-700';
   };
 
   if (loading) {
@@ -149,6 +158,11 @@ function DonorRequests() {
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getResponseBadge(request.response)}`}>
                         {request.response.toUpperCase()}
                       </span>
+                      {request.donationStatus && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getDonationStatusBadge(request.donationStatus)}`}>
+                          {request.donationStatus.toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <p className="text-gray-600">
                       {request.unitsNeeded} {request.unitsNeeded === 1 ? 'unit' : 'units'} needed
@@ -223,7 +237,7 @@ function DonorRequests() {
                 </div>
 
                 {/* Action Buttons */}
-                {request.response === 'pending' && (
+                {request.response === 'pending' && request.donationStatus === 'scheduled' && (
                   <div className="flex gap-3">
                     <button
                       onClick={() => handleAccept(request.id)}
@@ -251,6 +265,30 @@ function DonorRequests() {
                 {request.response === 'rejected' && (
                   <div className="bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-center">
                     You rejected this request
+                  </div>
+                )}
+
+                {/* OTP Block - only for accepted requests */}
+                {request.response === 'accepted' && request.confirmationCode && (
+                  <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4 text-sm">
+                    <p className="font-semibold text-purple-800 mb-1">Your OTP (share only with receiver in person):</p>
+                    <div className="flex items-center gap-2">
+                      <code className="px-3 py-1 bg-white border rounded text-purple-700 tracking-widest font-bold">
+                        {request.confirmationCode}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(request.confirmationCode);
+                          alert('OTP copied');
+                        }}
+                        className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-xs text-purple-600 mt-2">
+                      Donation not counted until receiver starts and completes it.
+                    </p>
                   </div>
                 )}
               </div>

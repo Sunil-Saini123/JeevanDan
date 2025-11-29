@@ -41,7 +41,7 @@ function MyRequests() {
     if (!confirm('Are you sure you want to cancel this request?')) return;
 
     try {
-      await api.delete(`/receiver/request/${requestId}`);
+      await api.delete(`/receiver/cancel-request/${requestId}`); // fixed path
       loadRequests(); // Reload
     } catch (err) {
       alert('Failed to cancel request');
@@ -52,10 +52,10 @@ function MyRequests() {
     const colors = {
       pending: 'bg-yellow-100 text-yellow-800',
       matched: 'bg-blue-100 text-blue-800',
-      accepted: 'bg-green-100 text-green-800',
+      partially_matched: 'bg-orange-100 text-orange-800',
+      fully_matched: 'bg-green-100 text-green-800',
       completed: 'bg-purple-100 text-purple-800',
-      cancelled: 'bg-red-100 text-red-800',
-      rejected: 'bg-gray-100 text-gray-800'
+      cancelled: 'bg-red-100 text-red-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };

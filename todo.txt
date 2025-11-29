@@ -1,0 +1,22 @@
+1. one person can give 1 unit of blood at a time and needs to wait 3 months before donating again.
+   so if a receiver request for more than 1 unit, multiple donors are needed.So the request of blood
+    units should be split among multiple donors.
+
+2. the receiver should also have a history of blood donations and when the request is completed it should be recorded in the history.
+    and removed the request from my requests.
+
+3. the donor requests should also be removed from blood request on completion of donation.
+
+4. if a donor get a request but he did not see the request so the request should be make available for the next best matching donor.
+   and the request should be visible to the prev donor but if it is already taken by another donor then it should not be visible to 
+   the prev donor or if he accept it should be like already accepted.and removed from his available requests.
+
+5. this request making available to next best matching donor should be done based on the urgency of the request and the distance from the donor to the receiver.
+   if the urgency is moderate or low then the request should be there for the best matching donor for 24hours/suitable time before moving to the next best matching donor.
+
+6. if a donor reject a request then the request should be made available to the next best matching donor immediately.
+
+//New
+
+1. the availability toggle of donor should be make unavailable if he completed a donation for 3 months.
+   and the availability toggle should be made available after 3 months of last donation.
