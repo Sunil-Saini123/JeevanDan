@@ -9,9 +9,46 @@ function DonorRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
     loadRequests();
+  }, []);
+
+  // Modify existing location useEffect (around line 25)
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const coords = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          };
+          
+          setCurrentLocation(coords);
+          setLocationError('');
+
+          // ✅ ADD: Send to backend
+          try {
+            await api.put('/donor/current-location', coords);
+          } catch (err) {
+            console.error('Failed to update server location:', err);
+          }
+        },
+        (error) => {
+          console.warn('Geolocation error:', error);
+          setLocationError('Location access denied. Showing approximate distance.');
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 300000, // 5 minutes cache
+          timeout: 10000
+        }
+      );
+    } else {
+      setLocationError('Geolocation not supported by browser.');
+    }
   }, []);
 
   const loadRequests = async () => {
@@ -91,6 +128,25 @@ function DonorRequests() {
       cancelled: 'bg-red-100 text-red-700'
     };
     return map[status] || 'bg-gray-100 text-gray-700';
+  };
+
+  const calculateLiveDistance = (requestCoordinates) => {
+    if (!currentLocation || !requestCoordinates || requestCoordinates.length !== 2) {
+      return null;
+    }
+
+    const [reqLon, reqLat] = requestCoordinates;
+    const { latitude: currLat, longitude: currLon } = currentLocation;
+
+    const R = 6371; // Earth radius in km
+    const dLat = (reqLat - currLat) * Math.PI / 180;
+    const dLon = (reqLon - currLon) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(currLat * Math.PI / 180) * Math.cos(reqLat * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return (R * c).toFixed(1);
   };
 
   if (loading) {
@@ -175,11 +231,11 @@ function DonorRequests() {
                         ⭐ Match: {request.matchScore}%
                       </p>
                     )}
-                    {request.distance && (
-                      <p className="text-sm text-gray-600">
-                        📍 {request.distance.toFixed(1)} km away
-                      </p>
-                    )}
+                    <p className="text-gray-600">
+                      📍 {currentLocation && request.location?.coordinates ? 
+                        `${calculateLiveDistance(request.location.coordinates)} km away` : 
+                        `${request.distance} km away`}
+                    </p>
                   </div>
                 </div>
 
@@ -235,13 +291,6 @@ function DonorRequests() {
                   <p>Required by: {new Date(request.requiredBy).toLocaleString()}</p>
                   <p>Posted: {new Date(request.createdAt).toLocaleDateString()}</p>
                 </div>
-
-                {/* Priority Info */}
-                {request.response === 'pending' && !request.isExpired && (
-                  <div className="text-xs text-gray-500 mb-2">
-                    Priority: #{request.priority} • Expires: {new Date(request.notificationExpiresAt).toLocaleString()}
-                  </div>
-                )}
 
                 {/* Action Buttons */}
                 {request.response === 'pending' && request.donationStatus === 'scheduled' && (
