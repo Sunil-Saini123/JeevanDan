@@ -244,7 +244,8 @@ const getMyRequests = async (req, res) => {
           city: request.location.address?.city,
           state: request.location.address?.state,
           pincode: request.location.address?.pincode
-        } : null
+        } : null,
+        location: request.location
       };
     });
 
@@ -291,7 +292,8 @@ const getMatchedDonors = async (req, res) => {
           location: donor.location ? {
             address: donor.location.address, // String, not object
             coordinates: donor.location.coordinates
-          } : null
+          } : null,
+          currentLocation: donor?.currentLocation,
         }
       };
     });
@@ -395,6 +397,12 @@ const completeDonation = async (req, res) => {
       $set: { 
         lastDonationDate: new Date(), 
         isAvailable: false  // ✅ Force unavailable for 3 months
+      },
+      $push: {
+        donationHistory: {
+          requestId: request._id,
+          donatedOn: new Date(),
+        }
       }
     });
 
