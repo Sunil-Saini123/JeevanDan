@@ -3,6 +3,26 @@ const Request = require('../models/request.model');
 const { hashPassword, comparePassword, generateToken } = require('../services/auth.services');
 const { cascadeToNextDonor } = require('../services/matching.service');
 
+// Helper function to calculate distance between two coordinates
+const calculateDistance = (coords1, coords2) => {
+  if (!coords1 || !coords2 || coords1.length !== 2 || coords2.length !== 2) {
+    return 0;
+  }
+
+  const [lon1, lat1] = coords1;
+  const [lon2, lat2] = coords2;
+
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+};
+
 // Register Donor
 const registerDonor = async (req, res) => {
   try {
@@ -104,10 +124,22 @@ const getDonorProfile = async (req, res) => {
       nextAvailableDate.setMonth(nextAvailableDate.getMonth() + 3);
     }
 
+    // ✅ ADD: Count pending requests for this donor
+    const pendingRequestsCount = await Request.countDocuments({
+      'matchedDonors': {
+        $elemMatch: {
+          donor: req.user.id,
+          response: 'pending'
+        }
+      },
+      status: { $nin: ['completed', 'cancelled', 'expired'] }
+    });
+
     res.json({
       donor: donor.toObject(),
       canDonate,
-      nextAvailableDate
+      nextAvailableDate,
+      pendingRequests: pendingRequestsCount // ✅ ADD this
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -213,10 +245,28 @@ const getDonorRequests = async (req, res) => {
       .populate('receiver', 'fullName email contactNumber')
       .sort({ createdAt: -1 });
 
-    const transformedRequests = requests.map(request => {
+    const transformedRequests = await Promise.all(requests.map(async (request) => {
       const donorMatch = request.matchedDonors.find(
         m => m.donor.toString() === req.user.id
       );
+
+      // ✅ Calculate distance for THIS donor's current/stored location
+      const donor = await Donor.findById(req.user.id);
+      const donorCoords = donor.currentLocation?.coordinates && 
+                          donor.currentLocation.coordinates.length === 2 &&
+                          donor.currentLocation.lastUpdated &&
+                          (new Date() - new Date(donor.currentLocation.lastUpdated)) < 24 * 60 * 60 * 1000
+        ? donor.currentLocation.coordinates
+        : donor.location?.coordinates;
+
+      const calculatedDistance = calculateDistance(
+        donorCoords,
+        request.location?.coordinates
+      );
+
+      // ✅ Check if expired
+      const isExpired = donorMatch.notificationExpiresAt && 
+                        new Date() > new Date(donorMatch.notificationExpiresAt);
 
       return {
         id: request._id,
@@ -238,23 +288,26 @@ const getDonorRequests = async (req, res) => {
           state: request.location.address?.state,
           pincode: request.location.address?.pincode
         } : null,
+        location: request.location, // ✅ ADD full location
         response: donorMatch?.response || 'pending',
         respondedAt: donorMatch?.respondedAt,
         matchScore: donorMatch?.matchScore,
-        distance: donorMatch?.distance,
-        donationStatus: donorMatch?.donationStatus || 'scheduled',           // ✅ added
-        confirmationCode: donorMatch?.confirmationCode || null,             // ✅ added
-        acceptedAt: donorMatch?.acceptedAt || null,                         // ✅ optional
-        startedAt: donorMatch?.startedAt || null,                           // ✅ optional
-        completedAt: donorMatch?.completedAt || null,                       // ✅ optional
+        distance: calculatedDistance || donorMatch?.distance || 0, // ✅ Use calculated distance
+        donationStatus: donorMatch?.donationStatus || 'scheduled',
+        confirmationCode: donorMatch?.confirmationCode || null,
+        acceptedAt: donorMatch?.acceptedAt || null,
+        startedAt: donorMatch?.startedAt || null,
+        completedAt: donorMatch?.completedAt || null,
         receiver: donorMatch?.response === 'accepted' ? {
           fullName: request.receiver?.fullName,
           email: request.receiver?.email,
           contactNumber: request.receiver?.contactNumber
         } : null,
         priority: donorMatch?.priority,
+        notificationExpiresAt: donorMatch?.notificationExpiresAt,
+        isExpired,
       };
-    });
+    }));
 
     res.json({ requests: transformedRequests });
   } catch (error) {
@@ -406,6 +459,38 @@ const getDonationHistory = async (req, res) => {
   }
 };
 
+// Add new function before module.exports
+const updateCurrentLocation = async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude required' });
+    }
+
+    const donor = await Donor.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          'currentLocation.coordinates': [Number(longitude), Number(latitude)],
+          'currentLocation.lastUpdated': new Date()
+        }
+      },
+      { new: true }
+    );
+
+    if (!donor) return res.status(404).json({ error: 'Donor not found' });
+
+    res.json({ 
+      message: 'Location updated',
+      currentLocation: donor.currentLocation
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Add to exports
 module.exports = {
   registerDonor,
   loginDonor,
@@ -416,5 +501,6 @@ module.exports = {
   getDonorRequests,
   acceptRequest,
   rejectRequest,
-  getDonationHistory
+  getDonationHistory,
+  updateCurrentLocation
 };

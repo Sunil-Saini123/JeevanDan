@@ -17,6 +17,7 @@ const {
   acceptRequest,
   rejectRequest,
   getDonationHistory,
+  updateCurrentLocation,
 } = require("../controllers/donor.controller");
 
 // Public routes
@@ -33,6 +34,7 @@ router.get("/profile", authMiddleware, isDonor, getDonorProfile);
 router.put("/profile", authMiddleware, isDonor, updateDonorProfile);
 router.put("/availability", authMiddleware, isDonor, updateAvailability);
 router.put("/location", authMiddleware, isDonor, updateLocation);
+router.put("/current-location", authMiddleware, isDonor, updateCurrentLocation);
 router.get("/requests", authMiddleware, isDonor, getDonorRequests);
 router.post(
   "/accept-request/:requestId",
