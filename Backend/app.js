@@ -39,8 +39,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
+// Check expired notifications every hour
 cron.schedule('0 * * * *', async () => {
-  console.log('🔄 Running cascade check...');
+  console.log('🔄 Checking expired donor notifications...');
   try {
     const activeRequests = await Request.find({
       status: { $nin: ['completed', 'cancelled', 'expired'] }
@@ -50,11 +51,11 @@ cron.schedule('0 * * * *', async () => {
       await cascadeToNextDonor(request._id);
     }
   } catch (error) {
-    console.error('❌ Cron error:', error);
+    console.error('❌ Cascade cron error:', error);
   }
 });
 
-// Add new cron job (runs daily at midnight)
+// Re-enable donors after 3-month cooldown (daily at midnight)
 cron.schedule('0 0 * * *', async () => {
   console.log('🔄 Checking donor availability cooldowns...');
   try {
@@ -66,12 +67,10 @@ cron.schedule('0 0 * * *', async () => {
         isAvailable: false,
         lastDonationDate: { $lte: threeMonthsAgo }
       },
-      {
-        $set: { isAvailable: true }
-      }
+      { $set: { isAvailable: true } }
     );
 
-    console.log(`✅ Re-enabled ${result.modifiedCount} donors after 3-month cooldown`);
+    console.log(`✅ Re-enabled ${result.modifiedCount} donors`);
   } catch (error) {
     console.error('❌ Availability cron error:', error);
   }
