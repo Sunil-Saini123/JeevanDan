@@ -118,31 +118,35 @@ const findMatchingDonors = async (requestId) => {
     const scoredDonors = [];
 
     for (const donor of donors) {
-      // Validate donor location
-      if (!donor.location?.coordinates || donor.location.coordinates.length !== 2) {
+      // ✅ CHANGED: Prefer currentLocation over stored location
+      const donorCoords = donor.currentLocation?.coordinates && 
+                          donor.currentLocation.coordinates.length === 2 &&
+                          donor.currentLocation.lastUpdated &&
+                          (new Date() - new Date(donor.currentLocation.lastUpdated)) < 24 * 60 * 60 * 1000 // 24 hours fresh
+        ? donor.currentLocation.coordinates
+        : donor.location?.coordinates;
+
+      if (!donorCoords || donorCoords.length !== 2) {
         console.log(`⚠️ Skipping donor ${donor._id} - invalid location`);
         continue;
       }
 
       const distance = calculateDistance(
-        donor.location.coordinates,
+        donorCoords,
         request.location.coordinates
       );
 
-      // Skip if too far (> 100km)
-      if (distance > 100) {
-        continue;
-      }
+      if (distance > 100) continue;
 
       const matchScore = calculateMatchScore(donor, request, distance);
 
-      // Only include if score > 30
       if (matchScore > 30) {
         scoredDonors.push({
           donor: donor._id,
           donorData: donor,
           matchScore,
-          distance: Math.round(distance * 10) / 10
+          distance: Math.round(distance * 10) / 10,
+          usingCurrentLocation: donorCoords === donor.currentLocation?.coordinates // ✅ ADD flag
         });
       }
     }
@@ -223,9 +227,107 @@ const autoMatchDonors = async (requestId) => {
   return await findMatchingDonors(requestId);
 };
 
+const cascadeToNextDonor = async (requestId) => {
+  try {
+    const request = await Request.findById(requestId);
+    if (!request || request.status === 'completed') return;
+
+    const now = new Date();
+
+    // Find expired pending matches
+    const expiredMatches = request.matchedDonors.filter(
+      m => m.response === 'pending' && 
+           m.notificationExpiresAt && 
+           now > new Date(m.notificationExpiresAt)
+    );
+
+    if (expiredMatches.length === 0) return { success: true };
+
+    // Mark as expired
+    expiredMatches.forEach(m => {
+      m.response = 'expired';
+      m.respondedAt = new Date();
+    });
+
+    // Find next best donors
+    const alreadyMatchedDonorIds = request.matchedDonors.map(m => m.donor.toString());
+    const compatibleBloodGroups = BLOOD_COMPATIBILITY[request.bloodGroup] || [];
+    
+    const donors = await Donor.find({
+      _id: { $nin: alreadyMatchedDonorIds },
+      bloodGroup: { $in: compatibleBloodGroups },
+      isAvailable: true,
+      'location.coordinates': { $exists: true, $ne: null }
+    });
+
+    const scoredDonors = [];
+
+    for (const donor of donors) {
+      const donorCoords = donor.currentLocation?.coordinates && 
+                          donor.currentLocation.coordinates.length === 2 &&
+                          donor.currentLocation.lastUpdated &&
+                          (new Date() - new Date(donor.currentLocation.lastUpdated)) < 24 * 60 * 60 * 1000
+        ? donor.currentLocation.coordinates
+        : donor.location?.coordinates;
+
+      if (!donorCoords || donorCoords.length !== 2) continue;
+
+      const distance = calculateDistance(donorCoords, request.location.coordinates);
+      if (distance > 100) continue;
+
+      const matchScore = calculateMatchScore(donor, request, distance);
+      if (matchScore > 30) {
+        scoredDonors.push({
+          donor: donor._id,
+          matchScore,
+          distance: Math.round(distance * 10) / 10
+        });
+      }
+    }
+
+    const validMatches = scoredDonors.sort((a, b) => b.matchScore - a.matchScore);
+    const neededUnits = request.unitsRequired - (request.unitsAccepted || 0);
+    const newMatches = validMatches.slice(0, Math.min(neededUnits, expiredMatches.length));
+
+    const getExpiryHours = (urgency) => {
+      switch (urgency) {
+        case 'Critical': return 6;
+        case 'Urgent': return 12;
+        case 'Normal': return 24;
+        default: return 24;
+      }
+    };
+
+    const expiryHours = getExpiryHours(request.urgency);
+
+    newMatches.forEach((match, index) => {
+      request.matchedDonors.push({
+        donor: match.donor,
+        matchScore: match.matchScore,
+        distance: match.distance,
+        notifiedAt: new Date(),
+        notificationExpiresAt: new Date(Date.now() + expiryHours * 60 * 60 * 1000),
+        response: 'pending',
+        donationStatus: 'scheduled',
+        unitsCommitted: 1,
+        priority: request.matchedDonors.length + index + 1
+      });
+    });
+
+    await request.save();
+
+    console.log(`♻️ Cascaded ${newMatches.length} new donors for request ${requestId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Cascade error:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   findMatchingDonors,
   autoMatchDonors,
+  cascadeToNextDonor, // ✅ ADD export
   calculateMatchScore,
   calculateDistance
 };
