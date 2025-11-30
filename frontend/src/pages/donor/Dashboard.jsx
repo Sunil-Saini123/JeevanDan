@@ -39,7 +39,7 @@ function DonorDashboard() {
       const response = await api.get('/donor/profile');
       setStats({
         totalDonations: response.data.donor?.totalDonations || 0,
-        pendingRequests: 0,
+        pendingRequests: response.data.pendingRequests || 0, // ✅ CHANGED
         isAvailable: response.data.donor?.isAvailable || false
       });
       
@@ -303,7 +303,7 @@ function DonorDashboard() {
             
             <div className="flex items-center justify-between bg-white bg-opacity-10 rounded-lg p-3">
               <div className="flex items-center gap-2">
-                <span className={`text-sm font-semibold ${stats.isAvailable ? 'text-white' : 'text-blue-200'}`}>
+                <span className={`text-sm font-semibold ${stats.isAvailable ? 'text-black' : 'text-blue-400'}`}>
                   {stats.isAvailable ? '🟢 Active' : '🔴 Inactive'}
                 </span>
               </div>
@@ -329,15 +329,33 @@ function DonorDashboard() {
               </button>
             </div>
             
-            <p className="text-xs text-blue-100 mt-3 opacity-80">
-              {stats.isAvailable 
-                ? '💡 You will receive blood request notifications' 
-                : '💡 You won\'t receive any notifications'}
-            </p>
-
-            {donorInfo && !donorInfo.canDonate && donorInfo.nextAvailableDate && (
-              <div className="text-xs bg-white bg-opacity-20 rounded px-2 py-1 mt-2">
-                ⏳ Available after: {new Date(donorInfo.nextAvailableDate).toLocaleDateString()}
+            {stats.isAvailable ? (
+              <div className="mt-3 flex items-center gap-2 text-white text-opacity-90">
+                <span className="text-base">💡</span>
+                <p className="text-xs">You'll receive blood request notifications</p>
+              </div>
+            ) : donorInfo?.nextAvailableDate ? (
+              <div className="mt-4 bg-white bg-opacity-20 backdrop-blur-sm rounded-xl p-3 border border-white border-opacity-30">
+                <div className="flex items-start gap-3">
+                  <div className="text-2xl mt-0.5">🔒</div>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">
+                      3-Month Cooldown Period
+                    </p>
+                    <p className="text-sm font-bold text-gray-600 text-opacity-90">
+                      Available from: {new Date(donorInfo.nextAvailableDate).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center gap-2 text-white text-opacity-80">
+                <span className="text-base">ℹ️</span>
+                <p className="text-xs">Toggle ON when ready to donate</p>
               </div>
             )}
           </div>
