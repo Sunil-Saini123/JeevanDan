@@ -32,6 +32,13 @@ const donorSchema = new mongoose.Schema(
       coordinates: { type: [Number], required: true }, // [lng, lat]
       address: { type: String },
     },
+    currentLocation: { // ✅ ADD this field
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        index: '2dsphere'
+      },
+      lastUpdated: Date
+    },
 
     isAvailable: { type: Boolean, default: false },
 
