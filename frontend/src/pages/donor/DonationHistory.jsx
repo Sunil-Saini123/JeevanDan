@@ -6,37 +6,73 @@ import api from '../../utils/api';
 function DonationHistory() {
   const navigate = useNavigate();
   const [donations, setDonations] = useState([]);
-  const [totalDonations, setTotalDonations] = useState(0);
+  const [stats, setStats] = useState({
+    totalDonations: 0,
+    livesSaved: 0,
+    lastDonation: null,
+    nextEligibleDate: null,
+    bloodGroup: ''
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadDonationHistory();
+    loadDonorProfile();
   }, []);
+
+  const loadDonorProfile = async () => {
+    try {
+      const res = await api.get('/donor/profile');
+      if (res.data?.donor) {
+        setStats(prev => ({
+          ...prev,
+          lastDonation: res.data.donor.lastDonationDate,
+          nextEligibleDate: res.data.nextAvailableDate,
+          bloodGroup: res.data.donor.bloodGroup
+        }));
+      }
+    } catch (err) {
+      console.error('Load profile error:', err);
+    }
+  };
 
   const loadDonationHistory = async () => {
     try {
       const response = await api.get('/donor/donation-history');
       
-      // ✅ Defensive check
       const fetchedDonations = response.data?.donations;
       
       if (Array.isArray(fetchedDonations)) {
         setDonations(fetchedDonations);
-        setTotalDonations(response.data?.totalDonations || 0);
+        const totalDonations = response.data?.totalDonations || 0;
+        setStats(prev => ({
+          ...prev,
+          totalDonations,
+          livesSaved: totalDonations * 3 // Each donation saves ~3 lives
+        }));
       } else {
         console.warn('Unexpected response format:', response.data);
         setDonations([]);
-        setTotalDonations(0);
       }
     } catch (err) {
       console.error('Load history error:', err);
       setError('Failed to load donation history');
-      setDonations([]); // ✅ Ensure array on error
-      setTotalDonations(0);
+      setDonations([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getDaysSinceLastDonation = () => {
+    if (!stats.lastDonation) return null;
+    return Math.floor((new Date() - new Date(stats.lastDonation)) / (1000 * 60 * 60 * 24));
+  };
+
+  const getDaysUntilEligible = () => {
+    if (!stats.nextEligibleDate) return null;
+    const days = Math.ceil((new Date(stats.nextEligibleDate) - new Date()) / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
   };
 
   if (loading) {
@@ -65,9 +101,7 @@ function DonationHistory() {
             ← Back to Dashboard
           </button>
           <h1 className="text-2xl font-bold text-green-600">📊 Donation History</h1>
-          <p className="text-sm text-gray-600">
-            Total Donations: <span className="font-bold text-green-600">{totalDonations}</span>
-          </p>
+          <p className="text-sm text-gray-600">Track your life-saving journey</p>
         </div>
       </header>
 
@@ -79,28 +113,97 @@ function DonationHistory() {
           </div>
         )}
 
-        {/* Stats Card */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl shadow-lg p-8 mb-8 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-4xl font-bold mb-2">{totalDonations}</h2>
-              <p className="text-green-100">Total Lives Saved</p>
+        {/* Stats Grid */}
+        <div className="grid md:grid-cols-4 gap-4 mb-8">
+          {/* Total Donations */}
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-green-100 text-sm">Total Donations</span>
+              <div className="text-3xl">💉</div>
             </div>
-            <div className="text-6xl opacity-50">💉</div>
+            <p className="text-4xl font-bold">{stats.totalDonations}</p>
           </div>
-          <div className="mt-6 pt-6 border-t border-green-400">
-            <p className="text-green-100">
-              Thank you for your generous contributions! Each donation can save up to 3 lives.
+
+          {/* Lives Saved */}
+          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-red-100 text-sm">Lives Saved</span>
+              <div className="text-3xl">❤️</div>
+            </div>
+            <p className="text-4xl font-bold">{stats.livesSaved}</p>
+            <p className="text-xs text-red-100 mt-1">~3 lives per donation</p>
+          </div>
+
+          {/* Blood Group */}
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-purple-100 text-sm">Blood Group</span>
+              <div className="text-3xl">🩸</div>
+            </div>
+            <p className="text-4xl font-bold">{stats.bloodGroup || 'N/A'}</p>
+          </div>
+
+          {/* Next Donation */}
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-blue-100 text-sm">Next Donation</span>
+              <div className="text-3xl">📅</div>
+            </div>
+            {getDaysUntilEligible() !== null && getDaysUntilEligible() > 0 ? (
+              <>
+                <p className="text-3xl font-bold">{getDaysUntilEligible()}</p>
+                <p className="text-xs text-blue-100 mt-1">days remaining</p>
+              </>
+            ) : (
+              <p className="text-2xl font-bold">Ready!</p>
+            )}
+          </div>
+        </div>
+
+        {/* Impact Card */}
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">🌟 Your Impact</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-3xl mb-2">🏥</div>
+              <p className="text-2xl font-bold text-green-600">{stats.totalDonations}</p>
+              <p className="text-sm text-gray-600">Emergency Responses</p>
+            </div>
+            <div className="text-center p-4 bg-red-50 rounded-lg">
+              <div className="text-3xl mb-2">👨‍👩‍👧‍👦</div>
+              <p className="text-2xl font-bold text-red-600">{stats.livesSaved}</p>
+              <p className="text-sm text-gray-600">Families Helped</p>
+            </div>
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-3xl mb-2">⏱️</div>
+              <p className="text-2xl font-bold text-blue-600">
+                {stats.lastDonation ? getDaysSinceLastDonation() : 0}
+              </p>
+              <p className="text-sm text-gray-600">Days Since Last Donation</p>
+            </div>
+          </div>
+          <div className="mt-6 p-4 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg">
+            <p className="text-gray-700 text-center">
+              💪 <strong>Fun Fact:</strong> One blood donation can save up to 3 lives! 
+              {stats.totalDonations > 0 && ` You've potentially saved ${stats.livesSaved} people.`}
             </p>
           </div>
         </div>
+
+        {/* Timeline Header */}
+        {donations.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">📜 Donation Timeline</h2>
+            <p className="text-gray-600">Your complete donation history</p>
+          </div>
+        )}
 
         {donations.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">💉</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">No donations yet</h2>
             <p className="text-gray-600 mb-6">
-              Accept blood requests to start your donation journey
+              Start your life-saving journey by accepting blood requests
             </p>
             <button
               onClick={() => navigate('/donor/requests')}
@@ -120,7 +223,7 @@ function DonationHistory() {
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-gray-800">
-                        Donation #{totalDonations - index}
+                        Donation #{stats.totalDonations - index}
                       </h3>
                       <p className="text-sm text-gray-600">
                         {new Date(donation.date).toLocaleDateString('en-US', {
@@ -147,15 +250,20 @@ function DonationHistory() {
                       </p>
                       {donation.location && (
                         <p className="text-sm text-gray-600">
-                          <span className="font-semibold">Location:</span> {donation.location.hospital}, {donation.location.city}
+                          <span className="font-semibold">Hospital:</span> {donation.location.hospital}
                         </p>
                       )}
                     </div>
                     <div>
-                      {donation.location?.pincode && (
-                        <p className="text-sm text-gray-600">
-                          <span className="font-semibold">Pincode:</span> {donation.location.pincode}
-                        </p>
+                      {donation.location && (
+                        <>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-semibold">City:</span> {donation.location.city}, {donation.location.state}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-semibold">Pincode:</span> {donation.location.pincode}
+                          </p>
+                        </>
                       )}
                     </div>
                   </div>
@@ -168,12 +276,30 @@ function DonationHistory() {
                     </svg>
                     <span className="font-semibold">Completed</span>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    {Math.floor((new Date() - new Date(donation.date)) / (1000 * 60 * 60 * 24))} days ago
-                  </p>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">
+                      {Math.floor((new Date() - new Date(donation.date)) / (1000 * 60 * 60 * 24))} days ago
+                    </p>
+                    <p className="text-xs text-green-600 font-semibold">
+                      ~3 lives saved 💚
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Motivational Footer */}
+        {donations.length > 0 && (
+          <div className="mt-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-2xl shadow-lg p-8 text-white text-center">
+            <h3 className="text-2xl font-bold mb-2">Thank You, Hero! 🦸</h3>
+            <p className="text-green-100 mb-4">
+              You've made {stats.totalDonations} {stats.totalDonations === 1 ? 'donation' : 'donations'} and potentially saved {stats.livesSaved} lives.
+            </p>
+            <p className="text-sm text-green-100">
+              Every donation counts. Keep up the amazing work! 💪
+            </p>
           </div>
         )}
       </main>
