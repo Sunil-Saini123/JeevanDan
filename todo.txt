@@ -1,7 +1,1 @@
-1. improve the donor donation history page
-
-2. the distance issue
-
-3. the expiry time for the donation request
-
-4. the websocket implementation for real-time updates
+1. the websocket implementation for real-time updates
