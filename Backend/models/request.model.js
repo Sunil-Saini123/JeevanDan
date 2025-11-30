@@ -87,6 +87,7 @@ const requestSchema = new mongoose.Schema({
     matchScore: { type: Number, min: 0, max: 100 },
     distance: { type: Number, min: 0 },
     notifiedAt: Date,
+    notificationExpiresAt: Date, // ✅ ADD this line
     response: { type: String, enum: ['pending', 'accepted', 'rejected', 'expired', 'superseded'], default: 'pending' },
     respondedAt: Date,
     // REPLACE donationStatus enum & add lifecycle fields
