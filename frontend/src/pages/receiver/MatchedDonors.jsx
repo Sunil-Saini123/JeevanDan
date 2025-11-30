@@ -11,10 +11,25 @@ function MatchedDonors() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [otpInput, setOtpInput] = useState('');
+  const [currentLocation, setCurrentLocation] = useState(null);
 
   useEffect(() => {
     loadMatchedDonors();
   }, [requestId]);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => console.warn('Geolocation error:', error)
+      );
+    }
+  }, []);
 
   const loadMatchedDonors = async () => {
     try {
@@ -63,6 +78,25 @@ function MatchedDonors() {
   const completeDonation = async (donorId) => {
     await api.post(`/receiver/request/${requestId}/complete-donation`, { donorId, unitsDonated: 1 });
     await loadMatchedDonors();
+  };
+
+  const calculateLiveDistance = (donorCoordinates) => {
+    if (!currentLocation || !donorCoordinates || donorCoordinates.length !== 2) {
+      return null;
+    }
+
+    const [donorLon, donorLat] = donorCoordinates;
+    const { latitude: currLat, longitude: currLon } = currentLocation;
+
+    const R = 6371;
+    const dLat = (donorLat - currLat) * Math.PI / 180;
+    const dLon = (donorLon - currLon) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(currLat * Math.PI / 180) * Math.cos(donorLat * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return (R * c).toFixed(1);
   };
 
   if (loading) {
@@ -137,7 +171,9 @@ function MatchedDonors() {
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">📍</span>
                     <span className="text-gray-600">
-                      {match.distance ? `${match.distance.toFixed(1)} km away` : 'Distance calculating...'}
+                      {currentLocation && match.donor.currentLocation?.coordinates ? 
+                        `${calculateLiveDistance(match.donor.currentLocation.coordinates)} km away (live 🟢)` : 
+                        `${match.distance} km away`}
                     </span>
                   </div>
                   
@@ -203,7 +239,7 @@ function MatchedDonors() {
                       onChange={e => setOtpInput(e.target.value)}
                     />
                     <button
-                      onClick={() => startDonation(match.donor.id)}
+                      onClick={() => startDonation(match.donor.id || match.donor._id)}
                       className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
                     >
                       ▶ Start Donation
@@ -212,7 +248,7 @@ function MatchedDonors() {
                 )}
                 {match.donationStatus === 'started' && (
                   <button
-                    onClick={() => completeDonation(match.donor.id)}
+                    onClick={() => completeDonation(match.donor.id || match.donor._id)}
                     className="mt-4 w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
                   >
                     ✅ Complete Donation
