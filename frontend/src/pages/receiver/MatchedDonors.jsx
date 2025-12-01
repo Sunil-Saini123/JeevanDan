@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../utils/api';
+import socketService from '../../utils/socket';
 
 function MatchedDonors() {
   const { requestId } = useParams();
@@ -30,6 +31,16 @@ function MatchedDonors() {
       );
     }
   }, []);
+
+  useEffect(() => {
+    socketService.on('donorAccepted', loadMatchedDonors);
+    socketService.on('donorRejected', loadMatchedDonors);
+
+    return () => {
+      socketService.off('donorAccepted', loadMatchedDonors);
+      socketService.off('donorRejected', loadMatchedDonors);
+    };
+  }, [requestId]);
 
   const loadMatchedDonors = async () => {
     try {
