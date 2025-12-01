@@ -318,7 +318,7 @@ function DonorDashboard() {
                 aria-label="Toggle availability"
               >
                 <span
-                  className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center text-lg ${
+                  className={` h-8 w-8 transform rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center text-lg ${
                     stats.isAvailable 
                       ? 'translate-x-11' 
                       : 'translate-x-1'
