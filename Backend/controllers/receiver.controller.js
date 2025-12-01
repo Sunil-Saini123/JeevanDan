@@ -1,6 +1,7 @@
 const Receiver = require('../models/receiver.models');
 const Request = require('../models/request.model');
 const Donor = require('../models/donor.models');
+const socketService = require('../services/socket.service');
 const { hashPassword, comparePassword, generateToken } = require('../services/auth.services');
 const { autoMatchDonors } = require('../services/matching.service');
 
@@ -359,6 +360,13 @@ const startDonation = async (req, res) => {
 
     await request.save();
 
+    
+    // ✅ ADD: Notify donor
+    socketService.emitToUser(donorMatch.donor, 'donationStarted', {
+      requestId: request._id,
+      message: 'Receiver has started the donation process'
+    });
+
     res.json({ message: 'Donation started', status: request.status });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -426,6 +434,15 @@ const completeDonation = async (req, res) => {
         }
       });
     }
+
+    
+    // ✅ ADD: Notify donor
+    socketService.emitToUser(donorMatch.donor, 'donationCompleted', {
+      requestId: request._id,
+      message: 'Donation completed! Thank you for saving a life.',
+      liveSaved: 3
+    });
+
 
     res.json({ message: 'Donation completed', status: request.status });
   } catch (error) {

@@ -2,6 +2,7 @@ const Donor = require('../models/donor.models');
 const Request = require('../models/request.model');
 const { hashPassword, comparePassword, generateToken } = require('../services/auth.services');
 const { cascadeToNextDonor } = require('../services/matching.service');
+const socketService = require('../services/socket.service');
 
 // Helper function to calculate distance between two coordinates
 const calculateDistance = (coords1, coords2) => {
@@ -366,6 +367,17 @@ const acceptRequest = async (req, res) => {
 
     await request.save();
 
+    // ✅ ADD: Emit real-time notification to receiver
+    socketService.emitToUser(request.receiver, 'donorAccepted', {
+      requestId: request._id,
+      donor: {
+        id: donorMatch._id,
+        fullName: donorMatch.fullName,
+        bloodGroup: donorMatch.bloodGroup
+      },
+      confirmationCode: donorMatch.confirmationCode
+    });
+
     res.json({
       message: 'Request accepted. Share OTP with receiver.',
       otp: donorMatch.confirmationCode,
@@ -399,6 +411,12 @@ const rejectRequest = async (req, res) => {
 
     await request.save();
     await cascadeToNextDonor(requestId);
+
+    // ✅ ADD: Emit notification to receiver
+    socketService.emitToUser(request.receiver, 'donorRejected', {
+      requestId: request._id,
+      message: 'A donor rejected your request. Finding alternatives...'
+    });
 
     res.json({ message: 'Request rejected', status: request.status });
   } catch (error) {

@@ -1,18 +1,12 @@
-require('dotenv').config(); 
-const http=require('http');
-const app=require('./app');
+require('dotenv').config();
+const { server } = require('./app'); // ✅ CHANGED from app to server
 const connectDB = require('./db/db');
 
-// Connect to Database
-connectDB();
+const PORT = process.env.PORT || 3000;
 
-//initialize port
-const port=process.env.PORT || 3000;
-
-//create server
-const server=http.createServer(app);
-
-//run the server
-server.listen(port,()=>{
-    console.log(`server is running on port ${port}`);
-})
+connectDB().then(() => {
+  server.listen(PORT, () => { // ✅ CHANGED from app.listen to server.listen
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🔌 WebSocket server ready`);
+  });
+});

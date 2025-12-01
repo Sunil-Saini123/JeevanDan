@@ -1,5 +1,6 @@
 const Donor = require('../models/donor.models');
 const Request = require('../models/request.model');
+const socketService = require('./socket.service');
 
 // Blood compatibility matrix
 const BLOOD_COMPATIBILITY = {
@@ -206,6 +207,20 @@ const findMatchingDonors = async (requestId) => {
     // if (topMatches.length === 0) request.status = 'pending'; else request.status = 'matched';
     await request.save();
 
+    // ✅ ADD: Emit to matched donors
+    topMatches.forEach(match => {
+      socketService.emitToUser(match.donor, 'newBloodRequest', {
+        requestId: request._id,
+        bloodGroup: request.bloodGroup,
+        urgency: request.urgency,
+        unitsNeeded: request.unitsRequired,
+        distance: match.distance,
+        matchScore: match.matchScore,
+        hospital: request.location?.address?.hospital
+      });
+    });
+
+
     console.log(`💾 Saved ${topMatches.length} matches to request ${requestId}`);
     console.log(`💾 Notified ${topMatches.length} donors (${similarDonors.length} similar) for request ${requestId}`);
 
@@ -316,8 +331,25 @@ const cascadeToNextDonor = async (requestId) => {
 
     await request.save();
 
+    // ✅ ADD: Notify newly matched donors
+    newMatches.forEach(match => {
+      socketService.emitToUser(match.donor, 'newBloodRequest', {
+        requestId: request._id,
+        bloodGroup: request.bloodGroup,
+        urgency: request.urgency,
+        unitsNeeded: request.unitsRequired,
+        distance: match.distance,
+        matchScore: match.matchScore,
+        hospital: request.location?.address?.hospital,
+        isCascaded: true, // Flag to show it's a fallback notification
+        expiresAt: new Date(Date.now() + expiryHours * 60 * 60 * 1000)
+      });
+    });
+
     console.log(`♻️ Cascaded ${newMatches.length} new donors for request ${requestId}`);
-    return { success: true };
+    console.log(`📡 Notified ${newMatches.length} cascade donors via WebSocket`);
+    
+    return { success: true, cascadedCount: newMatches.length };
   } catch (error) {
     console.error('❌ Cascade error:', error);
     throw error;

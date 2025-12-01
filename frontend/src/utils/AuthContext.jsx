@@ -1,5 +1,6 @@
 import { createContext, useState, useContext, useEffect } from 'react';
 import api from './api';
+import socketService from './socket';
 
 const AuthContext = createContext();
 
@@ -14,7 +15,12 @@ export const AuthProvider = ({ children }) => {
     
     if (token && type) {
       setUserType(type);
-      loadUserProfile(type);
+      loadUserProfile(type).then(profile => {
+        // ✅ Reconnect socket on page reload
+        if (profile && profile._id) {
+          socketService.connect(profile._id);
+        }
+      });
     } else {
       setLoading(false);
     }
@@ -26,9 +32,11 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get(endpoint);
       const userData = response.data.donor || response.data.receiver || response.data;
       setUser(userData);
+      return userData; // ✅ ADD RETURN
     } catch (error) {
       console.error('Failed to load profile:', error);
       logout();
+      return null; // ✅ ADD RETURN
     } finally {
       setLoading(false);
     }
@@ -38,10 +46,16 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('token', token);
     localStorage.setItem('userType', type);
     setUserType(type);
-    await loadUserProfile(type);
+    const profile = await loadUserProfile(type);
+    
+    // ✅ Connect socket with user ID
+    if (profile && profile._id) {
+      socketService.connect(profile._id);
+    }
   };
 
   const logout = () => {
+    socketService.disconnect(); // ✅ ADD THIS LINE
     localStorage.removeItem('token');
     localStorage.removeItem('userType');
     setUser(null);

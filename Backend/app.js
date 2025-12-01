@@ -1,17 +1,32 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http'); // ✅ ADD
+const { Server } = require('socket.io'); // ✅ ADD
 const donorRoutes = require('./routes/donor.routes');
 const receiverRoutes = require('./routes/receiver.routes');
-const matchingRoutes = require('./routes/matching.routes'); // 🆕 ADD THIS
+const matchingRoutes = require('./routes/matching.routes');
+const socketService = require('./services/socket.service'); // ✅ ADD
 const cron = require('node-cron');
 const { cascadeToNextDonor } = require('./services/matching.service');
 const Request = require('./models/request.model');
-const Donor = require('./models/donor.models'); // 🆕 ADD THIS
+const Donor = require('./models/donor.models');
 
 const app = express();
 
-// Connect to Database
+// ✅ CREATE HTTP SERVER
+const server = http.createServer(app);
 
+// ✅ SETUP SOCKET.IO
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+  }
+});
+
+// ✅ INITIALIZE SOCKET SERVICE
+socketService.initialize(io);
 
 // Middleware
 app.use(cors());
@@ -21,11 +36,15 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/donor', donorRoutes);
 app.use('/api/receiver', receiverRoutes);
-app.use('/api/match', matchingRoutes); // 🆕 ADD THIS
+app.use('/api/match', matchingRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'JeevanDan API is running' });
+  res.json({ 
+    status: 'OK', 
+    message: 'JeevanDan API is running',
+    socketConnections: socketService.getConnectedUsersCount() // ✅ ADD
+  });
 });
 
 // 404 handler
@@ -76,4 +95,4 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
-module.exports = app;
+module.exports = { app, server }; // ✅ EXPORT BOTH
