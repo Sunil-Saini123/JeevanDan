@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
+import socketService from '../../utils/socket';
 
 function DonorRequests() {
   const navigate = useNavigate();
@@ -49,6 +50,19 @@ function DonorRequests() {
     } else {
       setLocationError('Geolocation not supported by browser.');
     }
+  }, []);
+
+  useEffect(() => {
+    // Reload requests when new notifications arrive
+    socketService.on('newBloodRequest', loadRequests);
+    socketService.on('donationStarted', loadRequests);
+    socketService.on('donationCompleted', loadRequests);
+
+    return () => {
+      socketService.off('newBloodRequest', loadRequests);
+      socketService.off('donationStarted', loadRequests);
+      socketService.off('donationCompleted', loadRequests);
+    };
   }, []);
 
   const loadRequests = async () => {
@@ -164,201 +178,203 @@ function DonorRequests() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button
-            onClick={() => navigate('/donor/dashboard')}
-            className="text-gray-600 hover:text-gray-800 mb-2"
-          >
-            ← Back to Dashboard
-          </button>
-          <h1 className="text-2xl font-bold text-purple-600">📋 Blood Requests</h1>
-          <p className="text-sm text-gray-600">
-            Requests matched to your blood group and location
-          </p>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
-            ⚠️ {error}
-          </div>
-        )}
-
-        {/* ✅ Simplified check - requests defaults to [] */}
-        {requests.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <div className="text-6xl mb-4">📭</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">No blood requests yet</h2>
-            <p className="text-gray-600">
-              You'll receive notifications when someone needs your blood group
+        {/* Header */}
+        <header className="bg-white shadow">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <button
+              onClick={() => navigate('/donor/dashboard')}
+              className="text-gray-600 hover:text-gray-800 mb-2"
+            >
+              ← Back to Dashboard
+            </button>
+            <h1 className="text-2xl font-bold text-purple-600">📋 Blood Requests</h1>
+            <p className="text-sm text-gray-600">
+              Requests matched to your blood group and location
             </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {requests.map((request) => (
-              <div key={request.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-2xl font-bold text-red-600">
-                        {request.bloodGroup}
-                      </h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getUrgencyColor(request.urgencyLevel)}`}>
-                        {request.urgencyLevel}
-                      </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getResponseBadge(request.response)}`}>
-                        {request.response.toUpperCase()}
-                      </span>
-                      {request.donationStatus && (
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getDonationStatusBadge(request.donationStatus)}`}>
-                          {request.donationStatus.toUpperCase()}
+        </header>
+
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 py-8">
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+              ⚠️ {error}
+            </div>
+          )}
+
+          {/* ✅ Simplified check - requests defaults to [] */}
+          {requests.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <div className="text-6xl mb-4">📭</div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">No blood requests yet</h2>
+              <p className="text-gray-600">
+                You'll receive notifications when someone needs your blood group
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {requests.map((request) => (
+                <div key={request.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-2xl font-bold text-red-600">
+                          {request.bloodGroup}
+                        </h3>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getUrgencyColor(request.urgencyLevel)}`}>
+                          {request.urgencyLevel}
                         </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getResponseBadge(request.response)}`}>
+                          {request.response.toUpperCase()}
+                        </span>
+                        {request.donationStatus && (
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getDonationStatusBadge(request.donationStatus)}`}>
+                            {request.donationStatus.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-600">
+                        {request.unitsNeeded} {request.unitsNeeded === 1 ? 'unit' : 'units'} needed
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      {request.matchScore && (
+                        <p className="text-sm font-semibold text-green-600">
+                          ⭐ Match: {request.matchScore}%
+                        </p>
                       )}
-                    </div>
-                    <p className="text-gray-600">
-                      {request.unitsNeeded} {request.unitsNeeded === 1 ? 'unit' : 'units'} needed
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    {request.matchScore && (
-                      <p className="text-sm font-semibold text-green-600">
-                        ⭐ Match: {request.matchScore}%
-                      </p>
-                    )}
-                    <p className="text-gray-600">
-                      📍 {currentLocation && request.location?.coordinates ? 
-                        `${calculateLiveDistance(request.location.coordinates)} km away` : 
-                        `${request.distance} km away`}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Patient Details */}
-                {request.patientDetails && (
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-gray-800 mb-2">Patient Information</h4>
-                    <div className="grid md:grid-cols-2 gap-2 text-sm">
                       <p className="text-gray-600">
-                        <span className="font-semibold">Name:</span> {request.patientDetails.name}
-                      </p>
-                      <p className="text-gray-600">
-                        <span className="font-semibold">Age:</span> {request.patientDetails.age}
-                      </p>
-                      <p className="text-gray-600">
-                        <span className="font-semibold">Gender:</span> {request.patientDetails.gender}
-                      </p>
-                      <p className="text-gray-600">
-                        <span className="font-semibold">Condition:</span> {request.patientDetails.medicalCondition}
+                        📍 {currentLocation && request.location?.coordinates ? 
+                          `${calculateLiveDistance(request.location.coordinates)} km away` : 
+                          `${request.distance} km away`}
                       </p>
                     </div>
                   </div>
-                )}
 
-                {/* Location Details */}
-                {request.address && (
-                  <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-gray-800 mb-2">📍 Location</h4>
-                    <p className="text-sm text-gray-700">
-                      {request.address.hospital}, {request.address.city}, {request.address.state} - {request.address.pincode}
-                    </p>
+                  {/* Patient Details */}
+                  {request.patientDetails && (
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <h4 className="font-semibold text-gray-800 mb-2">Patient Information</h4>
+                      <div className="grid md:grid-cols-2 gap-2 text-sm">
+                        <p className="text-gray-600">
+                          <span className="font-semibold">Name:</span> {request.patientDetails.name}
+                        </p>
+                        <p className="text-gray-600">
+                          <span className="font-semibold">Age:</span> {request.patientDetails.age}
+                        </p>
+                        <p className="text-gray-600">
+                          <span className="font-semibold">Gender:</span> {request.patientDetails.gender}
+                        </p>
+                        <p className="text-gray-600">
+                          <span className="font-semibold">Condition:</span> {request.patientDetails.medicalCondition}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Location Details */}
+                  {request.address && (
+                    <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                      <h4 className="font-semibold text-gray-800 mb-2">📍 Location</h4>
+                      <p className="text-sm text-gray-700">
+                        {request.address.hospital}, {request.address.city}, {request.address.state} - {request.address.pincode}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Receiver Contact (only if accepted) */}
+                  {request.response === 'accepted' && request.receiver && (
+                    <div className="bg-green-50 rounded-lg p-4 mb-4">
+                      <h4 className="font-semibold text-green-800 mb-2">✓ Receiver Contact Details</h4>
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Name:</span> {request.receiver.fullName}
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Phone:</span> {request.receiver.contactNumber}
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Email:</span> {request.receiver.email}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Time Info */}
+                  <div className="flex justify-between items-center text-sm text-gray-500 mb-4">
+                    <p>Required by: {new Date(request.requiredBy).toLocaleString()}</p>
+                    <p>Posted: {new Date(request.createdAt).toLocaleDateString()}</p>
                   </div>
-                )}
 
-                {/* Receiver Contact (only if accepted) */}
-                {request.response === 'accepted' && request.receiver && (
-                  <div className="bg-green-50 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-green-800 mb-2">✓ Receiver Contact Details</h4>
-                    <p className="text-sm text-gray-700">
-                      <span className="font-semibold">Name:</span> {request.receiver.fullName}
-                    </p>
-                    <p className="text-sm text-gray-700">
-                      <span className="font-semibold">Phone:</span> {request.receiver.contactNumber}
-                    </p>
-                    <p className="text-sm text-gray-700">
-                      <span className="font-semibold">Email:</span> {request.receiver.email}
-                    </p>
-                  </div>
-                )}
-
-                {/* Time Info */}
-                <div className="flex justify-between items-center text-sm text-gray-500 mb-4">
-                  <p>Required by: {new Date(request.requiredBy).toLocaleString()}</p>
-                  <p>Posted: {new Date(request.createdAt).toLocaleDateString()}</p>
-                </div>
-
-                {/* Action Buttons */}
-                {request.response === 'pending' && request.donationStatus === 'scheduled' && (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleAccept(request.id)}
-                      disabled={actionLoading === request.id}
-                      className="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 font-semibold"
-                    >
-                      {actionLoading === request.id ? 'Processing...' : '✓ Accept Request'}
-                    </button>
-                    <button
-                      onClick={() => handleReject(request.id)}
-                      disabled={actionLoading === request.id}
-                      className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 font-semibold"
-                    >
-                      {actionLoading === request.id ? 'Processing...' : '✕ Reject'}
-                    </button>
-                  </div>
-                )}
-
-                {request.response === 'accepted' && (
-                  <div className="bg-green-100 text-green-800 px-4 py-3 rounded-lg text-center font-semibold">
-                    ✓ You accepted this request on {new Date(request.respondedAt).toLocaleDateString()}
-                  </div>
-                )}
-
-                {request.response === 'rejected' && (
-                  <div className="bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-center">
-                    You rejected this request
-                  </div>
-                )}
-
-                {request.response === 'superseded' && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                    ✓ This request was accepted by other donors. Thank you!
-                  </div>
-                )}
-
-                {/* OTP Block - only for accepted requests */}
-                {request.response === 'accepted' && request.confirmationCode && (
-                  <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4 text-sm">
-                    <p className="font-semibold text-purple-800 mb-1">Your OTP (share only with receiver in person):</p>
-                    <div className="flex items-center gap-2">
-                      <code className="px-3 py-1 bg-white border rounded text-purple-700 tracking-widest font-bold">
-                        {request.confirmationCode}
-                      </code>
+                  {/* Action Buttons */}
+                  {request.response === 'pending' && request.donationStatus === 'scheduled' && (
+                    <div className="flex gap-3">
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(request.confirmationCode);
-                          alert('OTP copied');
-                        }}
-                        className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                        onClick={() => handleAccept(request.id)}
+                        disabled={actionLoading === request.id}
+                        className="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 font-semibold"
                       >
-                        Copy
+                        {actionLoading === request.id ? 'Processing...' : '✓ Accept Request'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(request.id)}
+                        disabled={actionLoading === request.id}
+                        className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 font-semibold"
+                      >
+                        {actionLoading === request.id ? 'Processing...' : '✕ Reject'}
                       </button>
                     </div>
-                    <p className="text-xs text-purple-600 mt-2">
-                      Donation not counted until receiver starts and completes it.
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-    </div>
+                  )}
+
+                  {request.response === 'accepted' && (
+                    <div className="bg-green-100 text-green-800 px-4 py-3 rounded-lg text-center font-semibold">
+                      ✓ You accepted this request on {new Date(request.respondedAt).toLocaleDateString()}
+                    </div>
+                  )}
+
+                  {request.response === 'rejected' && (
+                    <div className="bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-center">
+                      You rejected this request
+                    </div>
+                  )}
+
+                  {request.response === 'superseded' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                      ✓ This request was accepted by other donors. Thank you!
+                    </div>
+                  )}
+
+                  {/* OTP Block - only for accepted requests */}
+                  {request.response === 'accepted' && request.confirmationCode && (
+                    <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4 text-sm">
+                      <p className="font-semibold text-purple-800 mb-1">Your OTP (share only with receiver in person):</p>
+                      <div className="flex items-center gap-2">
+                        <code className="px-3 py-1 bg-white border rounded text-purple-700 tracking-widest font-bold">
+                          {request.confirmationCode}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(request.confirmationCode);
+                            alert('OTP copied');
+                          }}
+                          className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <p className="text-xs text-purple-600 mt-2">
+                        Donation not counted until receiver starts and completes it.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
+    </>
   );
 }
 
