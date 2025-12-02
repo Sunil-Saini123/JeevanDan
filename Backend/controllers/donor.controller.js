@@ -327,11 +327,14 @@ const acceptRequest = async (req, res) => {
     const request = await Request.findOne({
       _id: requestId,
       'matchedDonors.donor': req.user.id
-    });
+    }).populate('matchedDonors.donor', 'fullName bloodGroup contactNumber'); // ✅ ADD populate
 
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
-    const donorMatch = request.matchedDonors.find(m => m.donor.toString() === req.user.id);
+    const donorMatch = request.matchedDonors.find(m => 
+      m.donor._id.toString() === req.user.id // ✅ CHANGED: m.donor._id (populated)
+    );
+
     if (!donorMatch) return res.status(404).json({ error: 'You are not matched to this request' });
     if (donorMatch.response !== 'pending') return res.status(400).json({ error: 'Already responded' });
 
@@ -367,15 +370,14 @@ const acceptRequest = async (req, res) => {
 
     await request.save();
 
-    // ✅ ADD: Emit real-time notification to receiver
+    // ✅ FIXED: Use populated donor data
     socketService.emitToUser(request.receiver, 'donorAccepted', {
       requestId: request._id,
       donor: {
-        id: donorMatch._id,
-        fullName: donorMatch.fullName,
-        bloodGroup: donorMatch.bloodGroup
-      },
-      confirmationCode: donorMatch.confirmationCode
+        id: donorMatch.donor._id,              // ✅ FIXED: donor._id (populated)
+        fullName: donorMatch.donor.fullName,    // ✅ FIXED: donor.fullName
+        bloodGroup: donorMatch.donor.bloodGroup // ✅ FIXED: donor.bloodGroup
+      }
     });
 
     res.json({

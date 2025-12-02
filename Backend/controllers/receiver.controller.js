@@ -362,7 +362,7 @@ const startDonation = async (req, res) => {
 
     
     // ✅ ADD: Notify donor
-    socketService.emitToUser(donorMatch.donor, 'donationStarted', {
+    socketService.emitToUser(md.donor, 'donationStarted', {
       requestId: request._id,
       message: 'Receiver has started the donation process'
     });
@@ -437,7 +437,7 @@ const completeDonation = async (req, res) => {
 
     
     // ✅ ADD: Notify donor
-    socketService.emitToUser(donorMatch.donor, 'donationCompleted', {
+    socketService.emitToUser(md.donor, 'donationCompleted', {
       requestId: request._id,
       message: 'Donation completed! Thank you for saving a life.',
       liveSaved: 3

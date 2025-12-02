@@ -27,7 +27,7 @@
 }
 
 .animate-progress {
-  animation: progress linear forwards;
+  animation: progress 10s linear forwards;
 }
 
 /* Pulse glow effect for important notifications */

@@ -6,24 +6,12 @@ function ReceiverDashboard() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    console.log('🟣 ReceiverDashboard: Component mounted');
-    console.log('🟣 ReceiverDashboard: Current user:', user);
-    console.log('🟣 ReceiverDashboard: Loading:', loading);
-  }, []);
-
-  useEffect(() => {
-    console.log('🟣 ReceiverDashboard: User state changed:', user);
-  }, [user]);
-
   const handleLogout = () => {
-    console.log('🟣 ReceiverDashboard: Logout clicked');
     logout();
     navigate('/');
   };
 
   if (loading) {
-    console.log('🟣 ReceiverDashboard: Showing loading state');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-600 to-red-900">
         <div className="text-white text-center">
@@ -38,7 +26,6 @@ function ReceiverDashboard() {
   }
 
   if (!user) {
-    console.log('🔴 ReceiverDashboard: No user data, showing error');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
@@ -53,8 +40,6 @@ function ReceiverDashboard() {
       </div>
     );
   }
-
-  console.log('🟣 ReceiverDashboard: Rendering dashboard for:', user.fullName);
 
   return (
     <div className="min-h-screen bg-gray-100">

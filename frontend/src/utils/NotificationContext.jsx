@@ -126,7 +126,6 @@ export const NotificationProvider = ({ children }) => {
           link: `/receiver/request/${data.requestId}/donors`  // ✅ CHANGED to match route
         },
         metadata: {
-          otp: data.confirmationCode,
           donorName: data.donor?.fullName,
           donorBloodGroup: data.donor?.bloodGroup
         },
