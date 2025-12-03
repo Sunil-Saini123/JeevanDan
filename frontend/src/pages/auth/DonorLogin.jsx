@@ -89,7 +89,7 @@ function DonorLogin() {
 
         <p className="text-center text-gray-600 mt-6">
           Don't have an account?{' '}
-          <Link to="/donor/login" className="text-purple-600 font-semibold hover:underline">
+          <Link to="/donor/register" className="text-purple-600 font-semibold hover:underline">
             Register
           </Link>
         </p>

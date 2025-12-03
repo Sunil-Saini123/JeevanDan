@@ -14,6 +14,13 @@ const BLOOD_COMPATIBILITY = {
   'O-': ['O-'] // Universal donor
 };
 
+// Urgency-specific radius in km
+const URGENCY_RADIUS = {
+  Critical: 15,  // 15km for critical
+  Urgent: 10,    // 10km for urgent  
+  Moderate: 5    // 5km for moderate
+};
+
 // Calculate distance between two coordinates (Haversine formula)
 const calculateDistance = (coord1, coord2) => {
   const R = 6371; // Earth's radius in km
@@ -38,12 +45,11 @@ const calculateMatchScore = (donor, request, distance) => {
   const compatibleBloodGroups = BLOOD_COMPATIBILITY[request.bloodGroup] || [];
   if (compatibleBloodGroups.includes(donor.bloodGroup)) {
     score += 40;
-    // Exact match bonus
     if (donor.bloodGroup === request.bloodGroup) {
       score += 5;
     }
   } else {
-    return 0; // Incompatible blood group = no match
+    return 0;
   }
 
   // 2. Distance Score (30%)
@@ -70,14 +76,20 @@ const calculateMatchScore = (donor, request, distance) => {
   else if (donor.totalDonations >= 3) score += 3;
   else if (donor.totalDonations >= 1) score += 2;
 
-  // 6. Last Donation Date Check
+  // ✅ 6. UPDATED: Gender-Specific Last Donation Check
   if (donor.lastDonationDate) {
-    const monthsSinceLastDonation = 
-      (Date.now() - new Date(donor.lastDonationDate)) / (1000 * 60 * 60 * 24 * 30);
+    const daysSinceLastDonation = 
+      (Date.now() - new Date(donor.lastDonationDate)) / (1000 * 60 * 60 * 24);
     
-    if (monthsSinceLastDonation < 3) {
-      return 0; // Cannot donate if less than 3 months
+    // Men: 90 days (3 months), Women: 120 days (4 months)
+    const minGapDays = donor.gender === 'Female' ? 120 : 90;
+    
+    if (daysSinceLastDonation < minGapDays) {
+      console.log(`⏭️ Skipping ${donor.fullName}: Last donated ${Math.floor(daysSinceLastDonation)} days ago (${donor.gender} needs ${minGapDays}+ days)`);
+      return 0; // Cannot donate yet
     }
+    
+    console.log(`✅ ${donor.fullName} (${donor.gender}): ${Math.floor(daysSinceLastDonation)} days since last donation (min: ${minGapDays})`);
   }
 
   // 7. Urgency Bonus
@@ -101,6 +113,10 @@ const findMatchingDonors = async (requestId) => {
       throw new Error('Invalid request location');
     }
 
+    // ✅ ADD: Get urgency-specific radius
+    const maxRadius = URGENCY_RADIUS[request.urgency] || 10;
+    console.log(`🔍 Searching donors for ${request.urgency} urgency within ${maxRadius}km radius`);
+
     // Find compatible donors
     const compatibleBloodGroups = BLOOD_COMPATIBILITY[request.bloodGroup] || [];
     
@@ -109,7 +125,7 @@ const findMatchingDonors = async (requestId) => {
     // Find available donors with compatible blood groups
     const donors = await Donor.find({
       bloodGroup: { $in: compatibleBloodGroups },
-      isAvailable:true,
+      isAvailable: true,
       'location.coordinates': { $exists: true, $ne: null }
     });
 
@@ -119,11 +135,10 @@ const findMatchingDonors = async (requestId) => {
     const scoredDonors = [];
 
     for (const donor of donors) {
-      // ✅ CHANGED: Prefer currentLocation over stored location
       const donorCoords = donor.currentLocation?.coordinates && 
                           donor.currentLocation.coordinates.length === 2 &&
                           donor.currentLocation.lastUpdated &&
-                          (new Date() - new Date(donor.currentLocation.lastUpdated)) < 24 * 60 * 60 * 1000 // 24 hours fresh
+                          (new Date() - new Date(donor.currentLocation.lastUpdated)) < 24 * 60 * 60 * 1000
         ? donor.currentLocation.coordinates
         : donor.location?.coordinates;
 
@@ -137,7 +152,11 @@ const findMatchingDonors = async (requestId) => {
         request.location.coordinates
       );
 
-      if (distance > 100) continue;
+      // ✅ CHANGED: Use urgency-based radius instead of fixed 60km
+      if (distance > maxRadius) {
+        console.log(`⏭️ Skipping ${donor.fullName}: ${distance.toFixed(1)}km > ${maxRadius}km (${request.urgency} limit)`);
+        continue;
+      }
 
       const matchScore = calculateMatchScore(donor, request, distance);
 
@@ -147,12 +166,39 @@ const findMatchingDonors = async (requestId) => {
           donorData: donor,
           matchScore,
           distance: Math.round(distance * 10) / 10,
-          usingCurrentLocation: donorCoords === donor.currentLocation?.coordinates // ✅ ADD flag
+          usingCurrentLocation: donorCoords === donor.currentLocation?.coordinates
         });
+        console.log(`✅ Match found: ${donor.fullName} - ${distance.toFixed(1)}km, score: ${matchScore}`);
       }
     }
 
-    console.log(`✅ Found ${scoredDonors.length} valid matches`);
+    console.log(`✅ Found ${scoredDonors.length} valid matches within ${maxRadius}km`);
+
+    // ✅ ADD: Handle no matches found
+    if (scoredDonors.length === 0) {
+      console.log(`⚠️ No donors found within ${maxRadius}km for ${request.urgency} urgency`);
+      
+      // Save request with no matches
+      request.matchedDonors = [];
+      await request.save();
+      
+      // Notify receiver
+      socketService.emitToUser(request.receiver, 'noDonorsFound', {
+        requestId: request._id,
+        urgency: request.urgency,
+        searchRadius: maxRadius,
+        bloodGroup: request.bloodGroup,
+        message: `No compatible donors found within ${maxRadius}km. Try upgrading urgency or waiting for new donors.`
+      });
+
+      return {
+        success: true,
+        matchCount: 0,
+        matches: [],
+        request,
+        reason: `No donors within ${maxRadius}km radius`
+      };
+    }
 
     // Sort by match score
     const validMatches = scoredDonors
@@ -184,7 +230,7 @@ const findMatchingDonors = async (requestId) => {
       switch (urgency) {
         case 'Critical': return 6;
         case 'Urgent': return 12;
-        case 'Normal': return 24;
+        case 'Moderate': return 24;
         default: return 24;
       }
     };
@@ -222,7 +268,7 @@ const findMatchingDonors = async (requestId) => {
 
 
     console.log(`💾 Saved ${topMatches.length} matches to request ${requestId}`);
-    console.log(`💾 Notified ${topMatches.length} donors (${similarDonors.length} similar) for request ${requestId}`);
+    console.log(`📡 Notified ${topMatches.length} donors within ${maxRadius}km`);
 
     return {
       success: true,
@@ -249,7 +295,6 @@ const cascadeToNextDonor = async (requestId) => {
 
     const now = new Date();
 
-    // Find expired pending matches
     const expiredMatches = request.matchedDonors.filter(
       m => m.response === 'pending' && 
            m.notificationExpiresAt && 
@@ -258,13 +303,17 @@ const cascadeToNextDonor = async (requestId) => {
 
     if (expiredMatches.length === 0) return { success: true };
 
-    // Mark as expired
     expiredMatches.forEach(m => {
       m.response = 'expired';
       m.respondedAt = new Date();
     });
 
-    // Find next best donors
+    // ✅ ADD: Progressive radius expansion
+    const baseRadius = URGENCY_RADIUS[request.urgency] || 10;
+    const expandedRadius = baseRadius * 1.5; // Expand by 50% on cascade
+    
+    console.log(`🔄 Cascading: Expanding radius from ${baseRadius}km to ${expandedRadius}km`);
+
     const alreadyMatchedDonorIds = request.matchedDonors.map(m => m.donor.toString());
     const compatibleBloodGroups = BLOOD_COMPATIBILITY[request.bloodGroup] || [];
     
@@ -288,7 +337,12 @@ const cascadeToNextDonor = async (requestId) => {
       if (!donorCoords || donorCoords.length !== 2) continue;
 
       const distance = calculateDistance(donorCoords, request.location.coordinates);
-      if (distance > 100) continue;
+      
+      // ✅ CHANGED: Use expanded radius
+      if (distance > expandedRadius) {
+        console.log(`⏭️ Skip cascade: ${donor.fullName} at ${distance.toFixed(1)}km > ${expandedRadius}km`);
+        continue;
+      }
 
       const matchScore = calculateMatchScore(donor, request, distance);
       if (matchScore > 30) {
@@ -297,6 +351,7 @@ const cascadeToNextDonor = async (requestId) => {
           matchScore,
           distance: Math.round(distance * 10) / 10
         });
+        console.log(`✅ Cascade match: ${donor.fullName} - ${distance.toFixed(1)}km, score: ${matchScore}`);
       }
     }
 
@@ -304,11 +359,23 @@ const cascadeToNextDonor = async (requestId) => {
     const neededUnits = request.unitsRequired - (request.unitsAccepted || 0);
     const newMatches = validMatches.slice(0, Math.min(neededUnits, expiredMatches.length));
 
+    if (newMatches.length === 0) {
+      console.log(`⚠️ No cascade donors found within ${expandedRadius}km`);
+      
+      socketService.emitToUser(request.receiver, 'cascadeFailed', {
+        requestId: request._id,
+        message: `Previous donors didn't respond. No additional donors found within ${expandedRadius}km.`,
+        suggestUpgrade: true
+      });
+      
+      return { success: true, cascadedCount: 0 };
+    }
+
     const getExpiryHours = (urgency) => {
       switch (urgency) {
         case 'Critical': return 6;
         case 'Urgent': return 12;
-        case 'Normal': return 24;
+        case 'Moderate': return 24;
         default: return 24;
       }
     };
@@ -331,7 +398,6 @@ const cascadeToNextDonor = async (requestId) => {
 
     await request.save();
 
-    // ✅ ADD: Notify newly matched donors
     newMatches.forEach(match => {
       socketService.emitToUser(match.donor, 'newBloodRequest', {
         requestId: request._id,
@@ -341,13 +407,12 @@ const cascadeToNextDonor = async (requestId) => {
         distance: match.distance,
         matchScore: match.matchScore,
         hospital: request.location?.address?.hospital,
-        isCascaded: true, // Flag to show it's a fallback notification
+        isCascaded: true,
         expiresAt: new Date(Date.now() + expiryHours * 60 * 60 * 1000)
       });
     });
 
-    console.log(`♻️ Cascaded ${newMatches.length} new donors for request ${requestId}`);
-    console.log(`📡 Notified ${newMatches.length} cascade donors via WebSocket`);
+    console.log(`♻️ Cascaded ${newMatches.length} donors within ${expandedRadius}km`);
     
     return { success: true, cascadedCount: newMatches.length };
   } catch (error) {

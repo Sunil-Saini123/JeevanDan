@@ -74,25 +74,52 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
-// Re-enable donors after 3-month cooldown (daily at midnight)
+// Re-enable donors after gender-specific cooldown (daily at midnight)
 cron.schedule('0 0 * * *', async () => {
-  console.log('🔄 Checking donor availability cooldowns...');
+  console.log('\n🔄 === Checking donor cooldown periods ===');
   try {
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
-    const result = await Donor.updateMany(
+    const now = new Date();
+    
+    // ✅ Men: 90 days (3 months)
+    const ninetyDaysAgo = new Date(now);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    const menResult = await Donor.updateMany(
       {
         isAvailable: false,
-        lastDonationDate: { $lte: threeMonthsAgo }
+        gender: 'Male',
+        lastDonationDate: { $lte: ninetyDaysAgo }
       },
       { $set: { isAvailable: true } }
     );
 
-    console.log(`✅ Re-enabled ${result.modifiedCount} donors`);
+    console.log(`✅ Re-enabled ${menResult.modifiedCount} male donors (90-day cooldown)`);
+
+    // ✅ Women: 120 days (4 months)
+    const oneTwentyDaysAgo = new Date(now);
+    oneTwentyDaysAgo.setDate(oneTwentyDaysAgo.getDate() - 120);
+    
+    const womenResult = await Donor.updateMany(
+      {
+        isAvailable: false,
+        gender: 'Female',
+        lastDonationDate: { $lte: oneTwentyDaysAgo }
+      },
+      { $set: { isAvailable: true } }
+    );
+
+    console.log(`✅ Re-enabled ${womenResult.modifiedCount} female donors (120-day cooldown)`);
+    
+    const totalReEnabled = menResult.modifiedCount + womenResult.modifiedCount;
+    console.log(`🎉 Total donors re-enabled: ${totalReEnabled}\n`);
+
   } catch (error) {
     console.error('❌ Availability cron error:', error);
   }
 });
+
+console.log('✅ Cron jobs initialized:');
+console.log('   📅 Expired notifications: Every hour');
+console.log('   📅 Donor cooldown: Daily at midnight (Male: 90d, Female: 120d)');
 
 module.exports = { app, server }; // ✅ EXPORT BOTH

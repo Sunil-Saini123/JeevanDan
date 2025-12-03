@@ -148,12 +148,47 @@ export const NotificationProvider = ({ children }) => {
       });
     };
 
+    const handleCascadeFailed = (data) => {
+      addNotification({
+        type: 'warning',
+        title: 'Finding Donors...',
+        message: data.message || 'Searching for alternative donors',
+        action: data.suggestUpgrade ? {
+          text: 'Upgrade Urgency',
+          link: '/receiver/my-requests'
+        } : undefined,
+        duration: 10000
+      });
+    };
+
+    const handleNoDonorsFound = (data) => {
+      addNotification({
+        type: 'error',
+        title: 'No Donors Found',
+        message: data.message || `No donors found within ${data.searchRadius}km`,
+        action: {
+          text: 'Update Request',
+          link: '/receiver/my-requests'
+        },
+        metadata: {
+          urgency: data.urgency,
+          searchRadius: data.searchRadius,
+          bloodGroup: data.bloodGroup
+        },
+        duration: 12000
+      });
+    };
+
     socketService.on('donorAccepted', handleDonorAccepted);
     socketService.on('donorRejected', handleDonorRejected);
+    socketService.on('cascadeFailed', handleCascadeFailed);
+    socketService.on('noDonorsFound', handleNoDonorsFound);
 
     return () => {
       socketService.off('donorAccepted', handleDonorAccepted);
       socketService.off('donorRejected', handleDonorRejected);
+      socketService.off('cascadeFailed', handleCascadeFailed);
+      socketService.off('noDonorsFound', handleNoDonorsFound);
     };
   }, [user, userType]);
 

@@ -71,9 +71,12 @@ donorSchema.index({ location: "2dsphere" });
 
 donorSchema.virtual('canDonate').get(function() {
   if (!this.lastDonationDate) return true;
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-  return new Date(this.lastDonationDate) <= threeMonthsAgo;
+  
+  // ✅ CHANGED: Gender-specific gap
+  const gapDays = this.gender === 'Female' ? 120 : 90; // 4 months for women, 3 for men
+  const daysSinceLastDonation = (Date.now() - new Date(this.lastDonationDate)) / (1000 * 60 * 60 * 24);
+  
+  return daysSinceLastDonation >= gapDays;
 });
 
 donorSchema.set('toJSON', { virtuals: true });

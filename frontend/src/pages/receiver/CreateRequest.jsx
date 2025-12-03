@@ -4,6 +4,37 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../utils/AuthContext';
 import api from '../../utils/api';
 
+// ✅ IMPROVED: Better urgency information with colors
+const URGENCY_INFO = {
+  Critical: {
+    responseTime: '6 hours',
+    searchRadius: '15 km',
+    expiryTime: '6 hours',
+    description: 'Life-threatening emergency - immediate blood required',
+    icon: '🚨',
+    badge: 'CRITICAL',
+    color: 'red'
+  },
+  Urgent: {
+    responseTime: '1-2 days',
+    searchRadius: '10 km',
+    expiryTime: '12 hours',
+    description: 'Scheduled surgery or serious medical condition',
+    icon: '⚠️',
+    badge: 'URGENT',
+    color: 'orange'
+  },
+  Moderate: {
+    responseTime: '3-5 days',
+    searchRadius: '5 km',
+    expiryTime: '24 hours',
+    description: 'Planned procedure or routine transfusion',
+    icon: 'ℹ️',
+    badge: 'MODERATE',
+    color: 'blue'
+  }
+};
+
 function CreateRequest() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -124,6 +155,34 @@ function CreateRequest() {
     setCurrentStep(currentStep - 1);
   };
 
+  // ✅ Helper function to get urgency styles
+  const getUrgencyStyles = (urgency) => {
+    const styles = {
+      Critical: {
+        bg: 'bg-red-50',
+        border: 'border-red-300',
+        text: 'text-red-900',
+        badge: 'bg-red-600 text-white',
+        icon: 'text-red-600'
+      },
+      Urgent: {
+        bg: 'bg-orange-50',
+        border: 'border-orange-300',
+        text: 'text-orange-900',
+        badge: 'bg-orange-500 text-white',
+        icon: 'text-orange-600'
+      },
+      Moderate: {
+        bg: 'bg-blue-50',
+        border: 'border-blue-300',
+        text: 'text-blue-900',
+        badge: 'bg-blue-600 text-white',
+        icon: 'text-blue-600'
+      }
+    };
+    return styles[urgency] || styles.Moderate;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-600 to-red-900 py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -172,9 +231,9 @@ function CreateRequest() {
             {/* Step 1: Blood Requirements */}
             {currentStep === 1 && (
               <div className="space-y-6">
-                <h3 className="text-xl font-bold text-gray-800">Blood Requirements</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-6">Blood Requirements</h3>
                 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-gray-700 font-semibold mb-2">
                       Blood Group *
@@ -215,38 +274,109 @@ function CreateRequest() {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-gray-700 font-semibold mb-2">
-                      Urgency Level *
-                    </label>
-                    <select
-                      name="urgencyLevel"
-                      value={formData.urgencyLevel}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-600 focus:outline-none"
-                    >
-                      <option value="Moderate">Moderate</option>
-                      <option value="Urgent">Urgent</option>
-                      <option value="Critical">Critical</option>
-                    </select>
+                {/* ✅ IMPROVED: Urgency Level with better layout */}
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-3">
+                    Urgency Level *
+                  </label>
+                  
+                  {/* Radio button style selection */}
+                  <div className="grid md:grid-cols-3 gap-3 mb-4">
+                    {Object.entries(URGENCY_INFO).map(([level, info]) => {
+                      const styles = getUrgencyStyles(level);
+                      const isSelected = formData.urgencyLevel === level;
+                      
+                      return (
+                        <div key={level}>
+                          <input
+                            type="radio"
+                            id={level}
+                            name="urgencyLevel"
+                            value={level}
+                            checked={isSelected}
+                            onChange={handleChange}
+                            className="hidden"
+                          />
+                          <label
+                            htmlFor={level}
+                            className={`block cursor-pointer p-4 rounded-xl border-2 transition-all ${
+                              isSelected 
+                                ? `${styles.border} ${styles.bg} shadow-lg transform scale-105` 
+                                : 'border-gray-200 bg-white hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-2xl">{info.icon}</span>
+                              <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                isSelected ? styles.badge : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                {info.badge}
+                              </span>
+                            </div>
+                            <p className={`font-bold text-sm ${
+                              isSelected ? styles.text : 'text-gray-700'
+                            }`}>
+                              {level}
+                            </p>
+                          </label>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  <div>
-                    <label className="block text-gray-700 font-semibold mb-2">
-                      Required By *
-                    </label>
-                    <input
-                      type="datetime-local"
-                      name="requiredBy"
-                      value={formData.requiredBy}
-                      onChange={handleChange}
-                      required
-                      min={new Date().toISOString().slice(0, 16)}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-600 focus:outline-none"
-                    />
-                  </div>
+                  {/* ✅ IMPROVED: Info card with better design */}
+                  {formData.urgencyLevel && (
+                    <div className={`p-5 rounded-xl border-2 ${getUrgencyStyles(formData.urgencyLevel).border} ${getUrgencyStyles(formData.urgencyLevel).bg}`}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-2xl">{URGENCY_INFO[formData.urgencyLevel].icon}</span>
+                        <h4 className={`font-bold text-lg ${getUrgencyStyles(formData.urgencyLevel).text}`}>
+                          {formData.urgencyLevel} Priority
+                        </h4>
+                      </div>
+                      
+                      <p className={`text-sm mb-4 ${getUrgencyStyles(formData.urgencyLevel).text} opacity-90`}>
+                        {URGENCY_INFO[formData.urgencyLevel].description}
+                      </p>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-white bg-opacity-60 rounded-lg p-3 text-center">
+                          <div className="text-xs text-gray-600 mb-1">Response Time</div>
+                          <div className="font-bold text-sm">
+                            {URGENCY_INFO[formData.urgencyLevel].responseTime}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white bg-opacity-60 rounded-lg p-3 text-center">
+                          <div className="text-xs text-gray-600 mb-1">Search Radius</div>
+                          <div className="font-bold text-sm">
+                            {URGENCY_INFO[formData.urgencyLevel].searchRadius}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white bg-opacity-60 rounded-lg p-3 text-center">
+                          <div className="text-xs text-gray-600 mb-1">Donor Timeout</div>
+                          <div className="font-bold text-sm">
+                            {URGENCY_INFO[formData.urgencyLevel].expiryTime}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">
+                    Required By *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    name="requiredBy"
+                    value={formData.requiredBy}
+                    onChange={handleChange}
+                    required
+                    min={new Date().toISOString().slice(0, 16)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-600 focus:outline-none"
+                  />
                 </div>
               </div>
             )}
@@ -452,7 +582,7 @@ function CreateRequest() {
               ) : (
                 <button
                   type="submit"
-                  disabled={loading}
+  disabled={loading}
                   className="ml-auto px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
                 >
                   {loading ? 'Creating Request...' : '✓ Create Request'}

@@ -339,16 +339,23 @@ function DonorDashboard() {
                 <div className="flex items-start gap-3">
                   <div className="text-2xl mt-0.5">🔒</div>
                   <div className="flex-1">
-                    <p className="text-xs font-semibold text-gray-600 mb-1">
-                      3-Month Cooldown Period
+                    <p className="text-xs font-semibold text-gray-800 mb-1">
+                      {/* ✅ CHANGED: Gender-specific text */}
+                      {donorInfo.donor?.gender === 'Female' ? '4-Month' : '3-Month'} Cooldown Period
                     </p>
-                    <p className="text-sm font-bold text-gray-600 text-opacity-90">
+                    <p className="text-sm font-bold text-gray-800">
                       Available from: {new Date(donorInfo.nextAvailableDate).toLocaleDateString('en-US', {
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric'
                       })}
                     </p>
+                    {/* ✅ ADD: Days remaining */}
+                    {donorInfo.cooldownInfo?.daysRemaining && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        {donorInfo.cooldownInfo.daysRemaining} days remaining
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

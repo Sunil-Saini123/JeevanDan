@@ -119,13 +119,25 @@ const getDonorProfile = async (req, res) => {
 
     const canDonate = donor.canDonate;
     let nextAvailableDate = null;
+    let cooldownInfo = null;
     
     if (donor.lastDonationDate && !canDonate) {
+      // ✅ CHANGED: Gender-specific cooldown
+      const gapMonths = donor.gender === 'Female' ? 4 : 3;
       nextAvailableDate = new Date(donor.lastDonationDate);
-      nextAvailableDate.setMonth(nextAvailableDate.getMonth() + 3);
+      nextAvailableDate.setMonth(nextAvailableDate.getMonth() + gapMonths);
+      
+      const daysRemaining = Math.max(0, Math.ceil((nextAvailableDate - new Date()) / (1000 * 60 * 60 * 24)));
+      
+      cooldownInfo = {
+        lastDonationDate: donor.lastDonationDate,
+        nextAvailableDate,
+        daysRemaining,
+        cooldownPeriod: donor.gender === 'Female' ? '4 months (120 days)' : '3 months (90 days)',
+        gender: donor.gender
+      };
     }
 
-    // ✅ ADD: Count pending requests for this donor
     const pendingRequestsCount = await Request.countDocuments({
       'matchedDonors': {
         $elemMatch: {
@@ -140,7 +152,8 @@ const getDonorProfile = async (req, res) => {
       donor: donor.toObject(),
       canDonate,
       nextAvailableDate,
-      pendingRequests: pendingRequestsCount // ✅ ADD this
+      cooldownInfo, // ✅ ADD this
+      pendingRequests: pendingRequestsCount
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -150,23 +163,28 @@ const getDonorProfile = async (req, res) => {
 // Update Donor Profile
 const updateDonorProfile = async (req, res) => {
   try {
-    // Don't allow updating password or email through this endpoint
     const { password, email, ...updateData } = req.body;
 
     const donor = await Donor.findById(req.user.id);
     if (!donor) return res.status(404).json({ error: 'Donor not found' });
 
-    // ✅ CHECK: If trying to enable availability, validate 3-month rule
     if (req.body.isAvailable === true || req.body.isAvailable === 'true') {
       if (donor.lastDonationDate) {
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        // ✅ CHANGED: Gender-specific validation
+        const gapMonths = donor.gender === 'Female' ? 4 : 3;
+        const gapDays = donor.gender === 'Female' ? 120 : 90;
+        const requiredDate = new Date(donor.lastDonationDate);
+        requiredDate.setMonth(requiredDate.getMonth() + gapMonths);
         
-        if (new Date(donor.lastDonationDate) > threeMonthsAgo) {
+        if (new Date() < requiredDate) {
+          const daysRemaining = Math.ceil((requiredDate - new Date()) / (1000 * 60 * 60 * 24));
+          
           return res.status(400).json({ 
-            error: 'You must wait 3 months after last donation before becoming available again.',
+            error: `You must wait ${gapMonths} months (${gapDays} days) after last donation.`,
             lastDonationDate: donor.lastDonationDate,
-            canDonateAfter: new Date(new Date(donor.lastDonationDate).setMonth(new Date(donor.lastDonationDate).getMonth() + 3))
+            canDonateAfter: requiredDate,
+            daysRemaining,
+            gender: donor.gender
           });
         }
       }
