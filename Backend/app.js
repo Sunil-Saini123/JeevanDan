@@ -1,11 +1,11 @@
 const express = require('express');
 const cors = require('cors');
-const http = require('http'); // ✅ ADD
-const { Server } = require('socket.io'); // ✅ ADD
+const http = require('http');
+const { Server } = require('socket.io');
 const donorRoutes = require('./routes/donor.routes');
 const receiverRoutes = require('./routes/receiver.routes');
 const matchingRoutes = require('./routes/matching.routes');
-const socketService = require('./services/socket.service'); // ✅ ADD
+const socketService = require('./services/socket.service');
 const cron = require('node-cron');
 const { cascadeToNextDonor } = require('./services/matching.service');
 const Request = require('./models/request.model');
@@ -16,10 +16,17 @@ const app = express();
 // ✅ CREATE HTTP SERVER
 const server = http.createServer(app);
 
-// ✅ SETUP SOCKET.IO
+// ✅ UPDATED: Production-ready CORS
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:5173', // Keep for local development
+  'http://localhost:3000'
+].filter(Boolean); // Remove undefined values
+
+// ✅ SETUP SOCKET.IO with production CORS
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
   }
@@ -28,8 +35,21 @@ const io = new Server(server, {
 // ✅ INITIALIZE SOCKET SERVICE
 socketService.initialize(io);
 
-// Middleware
-app.use(cors());
+// ✅ UPDATED: Express CORS middleware
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -38,24 +58,49 @@ app.use('/api/donor', donorRoutes);
 app.use('/api/receiver', receiverRoutes);
 app.use('/api/match', matchingRoutes);
 
-// Health check
+// ✅ UPDATED: Better health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'JeevanDan API is running',
-    socketConnections: socketService.getConnectedUsersCount() // ✅ ADD
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    socketConnections: socketService.getConnectedUsersCount()
+  });
+});
+
+// ✅ ADD: Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'JeevanDan Blood Donation API',
+    version: '1.0.0',
+    status: 'active',
+    endpoints: {
+      health: '/health',
+      donor: '/api/donor/*',
+      receiver: '/api/receiver/*',
+      matching: '/api/match/*'
+    }
   });
 });
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ 
+    error: 'Route not found',
+    path: req.path,
+    method: req.method
+  });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  console.error('Error:', err.stack);
+  res.status(err.status || 500).json({ 
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Something went wrong!' 
+      : err.message 
+  });
 });
 
 // Check expired notifications every hour
@@ -122,4 +167,4 @@ console.log('✅ Cron jobs initialized:');
 console.log('   📅 Expired notifications: Every hour');
 console.log('   📅 Donor cooldown: Daily at midnight (Male: 90d, Female: 120d)');
 
-module.exports = { app, server }; // ✅ EXPORT BOTH
+module.exports = { app, server };
